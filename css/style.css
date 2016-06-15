@@ -1,0 +1,32 @@
+body{
+	font-family      : "Gotham Rounded A","Gotham Rounded B","Helvetica Neue",Helvetica,Arial,sans-serif;
+	font-size        : 1em;
+}
+.vert_align {
+	position: relative;
+	top: 50%;
+	transform: translateY(-50%);
+}
+
+div#file_drop_div {
+	position       : relative;
+	left           : 0;
+	top            : 0;
+	width          : 12em;
+	height         : 8em;
+	text-align     : center;
+	vertical-align : middle;
+	overflow       : hidden;
+	border         : dashed;
+	border-color   : red;
+}
+
+input#smile_file {
+	position      : absolute !important;
+	left          : 0 !important;
+	top           : 0 !important;
+	width         : 30em !important;
+	height        : 30em !important;
+	opacity       : 0 !important;
+	overflow      : hidden !important;
+}
