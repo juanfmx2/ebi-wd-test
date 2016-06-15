@@ -68,5 +68,6 @@ div#render-container{
 	border           : solid;
 	border-width     : 0.1em;
 	border-color     : gray;
-	max-width        : 45%; 
+	max-width        : 100%; 
+	display          : none;
 }

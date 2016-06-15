@@ -243,6 +243,7 @@ function readSmileFileNUpdateViewer(evt) {
 					loadStructure(xyz(res)[0]);
 					$("#results").html(results.replace(/\n/g, "<br>"));
 					$("#render-container").show();
+					$("#results").show();
 				});
 			});
 		}
