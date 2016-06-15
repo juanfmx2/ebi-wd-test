@@ -1,32 +1,251 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
-
-},{}],2:[function(require,module,exports){
 "use strict";
+
+//-----------------------------------------------------------------------------
+// SPECK RENDERING CODE
+//-----------------------------------------------------------------------------
 
 
 var kb = require("keyboardjs");
 var lz = require("lz-string");
 var $ = require("jquery");
 
-var Renderer = require("speck/renderer")
-var View = require("speck/view");
-var System = require("speck/system");
-var xyz = require("speck/xyz");
-var samples = require("speck/samples");
-var elements = require("speck/elements");
-var presets = require("speck/presets");
-var mimetypes = require("speck/mimetypes");
+var Renderer = require("./speck/renderer")
+var View = require("./speck/view");
+var System = require("./speck/system");
+var xyz = require("./speck/xyz");
+var samples = require("./speck/samples");
+var elements = require("./speck/elements");
+var presets = require("./speck/presets");
+var mimetypes = require("./speck/mimetypes");
+
+var active_keys = {};
+
+function listen_to_key(key){
+	active_keys[key];
+	kb.bind(key, function(e) {
+			active_keys[key] = true;
+		}, function(e) {
+			active_keys[key] = false;
+		});
+	
+}
+
+listen_to_key('a');
+listen_to_key('z');
+listen_to_key('d');
+listen_to_key('p');
+listen_to_key('b');
+listen_to_key('s');
+listen_to_key('w');
+listen_to_key('o');
+listen_to_key('l');
+listen_to_key('q');
+
+var system = System.new();
+var view = View.new();
+var renderer = null;
+var needReset = false;
+
+var renderContainer;
+
+function loadStructure(data) {
+	system = System.new();
+	for (var i = 0; i < data.length; i++) {
+		var a = data[i];
+		var x = a.position[0];
+		var y = a.position[1];
+		var z = a.position[2];
+		System.addAtom(system, a.symbol, x,y,z);
+	}
+	System.center(system);
+	System.calculateBonds(system);
+	renderer.setSystem(system, view);
+	View.center(view, system);
+	needReset = true;
+}
+
+function on_ready_renderer_startup_cb(){
+
+	renderContainer = document.getElementById("render-container");
+
+	var imposterCanvas = document.getElementById("renderer-canvas");
+
+	renderer = new Renderer(imposterCanvas, view.resolution, view.aoRes);
+
+	var lastX = 0.0;
+	var lastY = 0.0;
+	var buttonDown = false;
+	
+	renderContainer.addEventListener("mousedown", function(e) {
+		document.body.style.cursor = "none";
+		if (e.button == 0) {
+			buttonDown = true;
+		}
+		lastX = e.clientX;
+		lastY = e.clientY;
+	});
+	
+	window.addEventListener("mouseup", function(e) {
+		document.body.style.cursor = "";
+		if (e.button == 0) {
+			buttonDown = false;
+		}
+	});
+	
+	setInterval(function() {
+		if (!buttonDown) {
+			document.body.style.cursor = "";
+		}
+	}, 10);
+	
+	window.addEventListener("mousemove", function(e) {
+		if (!buttonDown) {
+			return;
+		}
+		var dx = e.clientX - lastX;
+		var dy = e.clientY - lastY;
+		if (dx == 0 && dy == 0) {
+			return;
+		}
+		lastX = e.clientX;
+		lastY = e.clientY;
+		if (e.shiftKey) {
+			View.translate(view, dx, dy);
+		} else {
+			View.rotate(view, dx, dy);
+		}
+		needReset = true;
+	});
+	
+	renderContainer.addEventListener("wheel", function(e) {
+		var wd = 0;
+		if (e.deltaY < 0) {
+			wd = 1;
+		}
+		else {
+			wd = -1;
+		}
+		if (active_keys.a) {
+			view.atomScale += wd/100;
+			View.resolve(view);
+			needReset = true;
+		} else if (active_keys.z) {
+			var scale = view.relativeAtomScale;
+			scale += wd/100;
+			view.relativeAtomScale += wd/100;
+			View.resolve(view);
+			needReset = true;
+		} else if (active_keys.d) {
+			view.dofStrength += wd/100;
+			View.resolve(view);
+		} else if (active_keys.p) {
+			view.dofPosition += wd/100;
+			View.resolve(view);
+		} else if (active_keys.b) {
+			view.bondScale += wd/100;
+			View.resolve(view);
+			needReset = true;
+		} else if (active_keys.s) {
+			view.bondShade += wd/100;
+			View.resolve(view);
+			needReset = true;
+		} else if (active_keys.w) {
+			view.atomShade += wd/100;
+			View.resolve(view);
+			needReset = true;
+		} else if (active_keys.o) {
+			view.ao += wd/100;
+			View.resolve(view);
+		} else if (active_keys.l) {
+			view.brightness += wd/100;
+			View.resolve(view);
+		} else if (active_keys.q) {
+			view.outline += wd/100;
+			View.resolve(view);
+		} else {
+			view.zoom = view.zoom * (wd === 1 ? 1/0.9 : 0.9);
+			View.resolve(view);
+			needReset = true;
+		}
+		e.preventDefault();
+	});
+	
+	function reflow() {	
+		var ww = window.innerWidth;
+		var wh = window.innerHeight;
+	
+		var rcw = Math.round(wh * 1);
+		var rcm = Math.round((wh - rcw) / 2);
+	
+		renderContainer.style.height = rcw - 128 + "px";
+		renderContainer.style.width = rcw - 128+ "px";
+
+		imposterCanvas.style.height = rcw - 128 + "px";
+		imposterCanvas.style.width = rcw - 128+ "px";
+	}
+	
+	reflow();
+	
+	window.addEventListener("resize", reflow);
+
+	function loop() {
+
+		if (needReset) {
+			renderer.reset();
+			needReset = false;
+		}
+		renderer.render(view);
+		requestAnimationFrame(loop);
+	}
+	
+	loop();
+}
+
+
+//-----------------------------------------------------------------------------
+// CHEM API 
+//-----------------------------------------------------------------------------
 
 var base_chem_url = "https://www.ebi.ac.uk/chembl/api/utils/";
 
-function readSingleFile(evt) {
+function promise_query_chem_api(service,parameter){
+	return Promise.resolve($.post(base_chem_url+ service,parameter));
+}
+
+
+
+//-----------------------------------------------------------------------------
+// File Handling
+//-----------------------------------------------------------------------------
+
+function readSmileFileNUpdateViewer(evt) {
 	//Retrieve the first (and only!) File from the FileList object
 	var file = evt.target.files[0]; 
 	if (file) {
 		var reader = new FileReader();
 		reader.onload = function(event) {
-			var text = reader.result;
-			console.log(text)
+			var text_smiles = reader.result;
+			var results = "<b>SMILES File:</b>\n";
+			console.log("SMILES File:");
+			console.log(text_smiles);
+			results += text_smiles+"\n";
+			var promise_2_ctab = promise_query_chem_api("smiles2ctab", text_smiles);
+			promise_2_ctab.then(function(res){
+				console.log("SMILES2CTAB result:");
+				console.log(res);
+				results += "<b>SMILES2CTAB result:</b>\n";
+				results += res+"\n";
+				promise_query_chem_api("ctab2xyz",res).then(function(res){
+					console.log("CTAB2XYZ result:");
+					console.log(res);
+					results += "<b>CTAB2XYZ result:</b>\n";
+					results += res+"\n";
+					loadStructure(xyz(res)[0]);
+					$("#results").html(results.replace(/\n/g, "<br>"));
+					$("#render-container").show();
+				});
+			});
 		}
 		reader.readAsText(file);
 	} else { 
@@ -34,19 +253,23 @@ function readSingleFile(evt) {
 	}
 }
 
+//-----------------------------------------------------------------------------
+// OnReady
+//-----------------------------------------------------------------------------
+
 $("document").ready(function(){
 	if(!window.FileReader) {
 		$("#file_panel").html('Your browser does not support the HTML5 FileReader.');
 	}
 	else{
-		console.log("Hello!")
+		on_ready_renderer_startup_cb();
 		$("#smile_file").on('change',function(event){
-			readSingleFile(event);
+			readSmileFileNUpdateViewer(event);
 		});
 	}
 });
 
-},{"jquery":3,"keyboardjs":4,"lz-string":5,"speck/elements":8,"speck/mimetypes":10,"speck/presets":11,"speck/renderer":12,"speck/samples":13,"speck/system":14,"speck/view":15,"speck/xyz":17}],3:[function(require,module,exports){
+},{"./speck/elements":11,"./speck/mimetypes":13,"./speck/presets":14,"./speck/renderer":15,"./speck/samples":16,"./speck/system":17,"./speck/view":18,"./speck/xyz":20,"jquery":2,"keyboardjs":3,"lz-string":8}],2:[function(require,module,exports){
 /*!
  * jQuery JavaScript Library v2.2.4
  * http://jquery.com/
@@ -9862,1010 +10085,820 @@ if ( !noGlobal ) {
 return jQuery;
 }));
 
-},{}],4:[function(require,module,exports){
-/**
- * Title: KeyboardJS
- * Version: v0.4.1
- * Description: KeyboardJS is a flexible and easy to use keyboard binding
- * library.
- * Author: Robert Hurst.
- *
- * Copyright 2011, Robert William Hurst
- * Licenced under the BSD License.
- * See https://raw.github.com/RobertWHurst/KeyboardJS/master/license.txt
- */
-(function(context, factory) {
-
-	//INDEXOF POLLYFILL
-	[].indexOf||(Array.prototype.indexOf=function(a,b,c){for(c=this.length,b=(c+~~b)%c;b<c&&(!(b in this)||this[b]!==a);b++);return b^c?b:-1;});
-
-	//AMD
-	if(typeof define === 'function' && define.amd) { define(constructAMD); }
-
-	//CommonJS
-	else if(typeof module !== 'undefined') {constructCommonJS()}
-
-	//GLOBAL
-	else { constructGlobal(); }
-
-	/**
-	 * Construct AMD version of the library
-	 */
-	function constructAMD() {
-
-		//create a library instance
-		return init(context);
-
-		//spawns a library instance
-		function init(context) {
-			var library;
-			library = factory(context, 'amd');
-			library.fork = init;
-			return library;
-		}
-	}
-
-	/**
-	 * Construct CommonJS version of the library
-	 */
-	function constructCommonJS() {
-
-		//create a library instance
-		module.exports = init(context);
-
-		return;
-
-		//spawns a library instance
-		function init(context) {
-			var library;
-			library = factory(context, 'CommonJS');
-			library.fork = init;
-			return library;
-
-		}
-
-	}
-
-	/**
-	 * Construct a Global version of the library
-	 */
-	function constructGlobal() {
-		var library;
-
-		//create a library instance
-		library = init(context);
-
-		//spawns a library instance
-		function init(context) {
-			var library, namespaces = [], previousValues = {};
-
-			library = factory(context, 'global');
-			library.fork = init;
-			library.noConflict = noConflict;
-			library.noConflict('KeyboardJS', 'k');
-			return library;
-
-			//sets library namespaces
-			function noConflict(    ) {
-				var args, nI, newNamespaces;
-
-				newNamespaces = Array.prototype.slice.apply(arguments);
-
-				for(nI = 0; nI < namespaces.length; nI += 1) {
-					if(typeof previousValues[namespaces[nI]] === 'undefined') {
-						delete context[namespaces[nI]];
-					} else {
-						context[namespaces[nI]] = previousValues[namespaces[nI]];
-					}
-				}
-
-				previousValues = {};
-
-				for(nI = 0; nI < newNamespaces.length; nI += 1) {
-					if(typeof newNamespaces[nI] !== 'string') {
-						throw new Error('Cannot replace namespaces. All new namespaces must be strings.');
-					}
-					previousValues[newNamespaces[nI]] = context[newNamespaces[nI]];
-					context[newNamespaces[nI]] = library;
-				}
-
-				namespaces = newNamespaces;
-
-				return namespaces;
-			}
-		}
-	}
-
-})(this, function(targetWindow, env) {
-	var KeyboardJS = {}, locales = {}, locale, map, macros, activeKeys = [], bindings = [], activeBindings = [],
-	activeMacros = [], aI, usLocale;
-	targetWindow = targetWindow || window;
-
-	///////////////////////
-	// DEFAULT US LOCALE //
-	///////////////////////
-
-	//define US locale
-	//If you create a new locale please submit it as a pull request or post
-	// it in the issue tracker at
-	// http://github.com/RobertWhurst/KeyboardJS/issues/
-	usLocale = {
-		"map": {
-
-			//general
-			"3": ["cancel"],
-			"8": ["backspace"],
-			"9": ["tab"],
-			"12": ["clear"],
-			"13": ["enter"],
-			"16": ["shift"],
-			"17": ["ctrl"],
-			"18": ["alt", "menu"],
-			"19": ["pause", "break"],
-			"20": ["capslock"],
-			"27": ["escape", "esc"],
-			"32": ["space", "spacebar"],
-			"33": ["pageup"],
-			"34": ["pagedown"],
-			"35": ["end"],
-			"36": ["home"],
-			"37": ["left"],
-			"38": ["up"],
-			"39": ["right"],
-			"40": ["down"],
-			"41": ["select"],
-			"42": ["printscreen"],
-			"43": ["execute"],
-			"44": ["snapshot"],
-			"45": ["insert", "ins"],
-			"46": ["delete", "del"],
-			"47": ["help"],
-			"91": ["command", "windows", "win", "super", "leftcommand", "leftwindows", "leftwin", "leftsuper"],
-			"92": ["command", "windows", "win", "super", "rightcommand", "rightwindows", "rightwin", "rightsuper"],
-			"145": ["scrolllock", "scroll"],
-			"186": ["semicolon", ";"],
-			"187": ["equal", "equalsign", "="],
-			"188": ["comma", ","],
-			"189": ["dash", "-"],
-			"190": ["period", "."],
-			"191": ["slash", "forwardslash", "/"],
-			"192": ["graveaccent", "`"],
-			"219": ["openbracket", "["],
-			"220": ["backslash", "\\"],
-			"221": ["closebracket", "]"],
-			"222": ["apostrophe", "'"],
-
-			//0-9
-			"48": ["zero", "0"],
-			"49": ["one", "1"],
-			"50": ["two", "2"],
-			"51": ["three", "3"],
-			"52": ["four", "4"],
-			"53": ["five", "5"],
-			"54": ["six", "6"],
-			"55": ["seven", "7"],
-			"56": ["eight", "8"],
-			"57": ["nine", "9"],
-
-			//numpad
-			"96": ["numzero", "num0"],
-			"97": ["numone", "num1"],
-			"98": ["numtwo", "num2"],
-			"99": ["numthree", "num3"],
-			"100": ["numfour", "num4"],
-			"101": ["numfive", "num5"],
-			"102": ["numsix", "num6"],
-			"103": ["numseven", "num7"],
-			"104": ["numeight", "num8"],
-			"105": ["numnine", "num9"],
-			"106": ["nummultiply", "num*"],
-			"107": ["numadd", "num+"],
-			"108": ["numenter"],
-			"109": ["numsubtract", "num-"],
-			"110": ["numdecimal", "num."],
-			"111": ["numdivide", "num/"],
-			"144": ["numlock", "num"],
-
-			//function keys
-			"112": ["f1"],
-			"113": ["f2"],
-			"114": ["f3"],
-			"115": ["f4"],
-			"116": ["f5"],
-			"117": ["f6"],
-			"118": ["f7"],
-			"119": ["f8"],
-			"120": ["f9"],
-			"121": ["f10"],
-			"122": ["f11"],
-			"123": ["f12"]
-		},
-		"macros": [
-
-			//secondary key symbols
-			['shift + `', ["tilde", "~"]],
-			['shift + 1', ["exclamation", "exclamationpoint", "!"]],
-			['shift + 2', ["at", "@"]],
-			['shift + 3', ["number", "#"]],
-			['shift + 4', ["dollar", "dollars", "dollarsign", "$"]],
-			['shift + 5', ["percent", "%"]],
-			['shift + 6', ["caret", "^"]],
-			['shift + 7', ["ampersand", "and", "&"]],
-			['shift + 8', ["asterisk", "*"]],
-			['shift + 9', ["openparen", "("]],
-			['shift + 0', ["closeparen", ")"]],
-			['shift + -', ["underscore", "_"]],
-			['shift + =', ["plus", "+"]],
-			['shift + (', ["opencurlybrace", "opencurlybracket", "{"]],
-			['shift + )', ["closecurlybrace", "closecurlybracket", "}"]],
-			['shift + \\', ["verticalbar", "|"]],
-			['shift + ;', ["colon", ":"]],
-			['shift + \'', ["quotationmark", "\""]],
-			['shift + !,', ["openanglebracket", "<"]],
-			['shift + .', ["closeanglebracket", ">"]],
-			['shift + /', ["questionmark", "?"]]
-		]
-	};
-	//a-z and A-Z
-	for (aI = 65; aI <= 90; aI += 1) {
-		usLocale.map[aI] = String.fromCharCode(aI + 32);
-		usLocale.macros.push(['shift + ' + String.fromCharCode(aI + 32) + ', capslock + ' + String.fromCharCode(aI + 32), [String.fromCharCode(aI)]]);
-	}
-
-  // Support command key on Mac.
-	// This is unfortunately browser specific
-	if(/^Mac/.test(navigator.platform)){
-		// Chrome,Safari
-		if(/Chrome/.test(navigator.userAgent) ||
-			 /Safari/.test(navigator.userAgent)){
-				 usLocale.map["93"] = usLocale.map["92"];
-		}
-		// Opera
-		if(/Opera/.test(navigator.userAgent)){
-			usLocale.map["17"] = usLocale.map["91"];
-			delete usLocale.map["91"];
-		}
-		// Firefox
-		if(/Firefox/.test(navigator.userAgent)){
-			usLocale.map["224"] = usLocale.map["91"];
-			delete usLocale.map["91"];
-		}
-		delete usLocale.map["92"];
-	}
-
-	registerLocale('us', usLocale);
-	getSetLocale('us');
-
-
-	//////////
-	// INIT //
-	//////////
-
-	//enable the library
-	enable();
-
-
-	/////////
-	// API //
-	/////////
-
-	//assemble the library and return it
-	KeyboardJS.enable = enable;
-	KeyboardJS.disable = disable;
-	KeyboardJS.activeKeys = getActiveKeys;
-	KeyboardJS.releaseKey = removeActiveKey;
-	KeyboardJS.pressKey = addActiveKey;
-	KeyboardJS.on = createBinding;
-	KeyboardJS.clear = removeBindingByKeyCombo;
-	KeyboardJS.clear.key = removeBindingByKeyName;
-	KeyboardJS.locale = getSetLocale;
-	KeyboardJS.locale.register = registerLocale;
-	KeyboardJS.macro = createMacro;
-	KeyboardJS.macro.remove = removeMacro;
-	KeyboardJS.key = {};
-	KeyboardJS.key.name = getKeyName;
-	KeyboardJS.key.code = getKeyCode;
-	KeyboardJS.combo = {};
-	KeyboardJS.combo.active = isSatisfiedCombo;
-	KeyboardJS.combo.parse = parseKeyCombo;
-	KeyboardJS.combo.stringify = stringifyKeyCombo;
-	return KeyboardJS;
-
-
-	//////////////////////
-	// INSTANCE METHODS //
-	//////////////////////
-
-	/**
-	 * Enables KeyboardJS
-	 */
-	function enable() {
-		if(targetWindow.addEventListener) {
-			targetWindow.document.addEventListener('keydown', keydown, false);
-			targetWindow.document.addEventListener('keyup', keyup, false);
-			targetWindow.addEventListener('blur', reset, false);
-			targetWindow.addEventListener('webkitfullscreenchange', reset, false);
-			targetWindow.addEventListener('mozfullscreenchange', reset, false);
-		} else if(targetWindow.attachEvent) {
-			targetWindow.document.attachEvent('onkeydown', keydown);
-			targetWindow.document.attachEvent('onkeyup', keyup);
-			targetWindow.attachEvent('onblur', reset);
-		}
-	}
-
-	/**
-	 * Exits all active bindings and disables KeyboardJS
-	 */
-	function disable() {
-		reset();
-		if(targetWindow.removeEventListener) {
-			targetWindow.document.removeEventListener('keydown', keydown, false);
-			targetWindow.document.removeEventListener('keyup', keyup, false);
-			targetWindow.removeEventListener('blur', reset, false);
-			targetWindow.removeEventListener('webkitfullscreenchange', reset, false);
-			targetWindow.removeEventListener('mozfullscreenchange', reset, false);
-		} else if(targetWindow.detachEvent) {
-			targetWindow.document.detachEvent('onkeydown', keydown);
-			targetWindow.document.detachEvent('onkeyup', keyup);
-			targetWindow.detachEvent('onblur', reset);
-		}
-	}
-
-
-	////////////////////
-	// EVENT HANDLERS //
-	////////////////////
-
-	/**
-	 * Exits all active bindings. Optionally passes an event to all binding
-	 *  handlers.
-	 * @param  {KeyboardEvent}	event	[Optional]
-	 */
-	function reset(event) {
-		activeKeys = [];
-		pruneMacros();
-		pruneBindings(event);
-	}
-
-	/**
-	 * Key down event handler.
-	 * @param  {KeyboardEvent}	event
-	 */
-	function keydown(event) {
-		var keyNames, keyName, kI;
-		keyNames = getKeyName(event.keyCode);
-		if(keyNames.length < 1) { return; }
-		event.isRepeat = false;
-		for(kI = 0; kI < keyNames.length; kI += 1) {
-		    keyName = keyNames[kI];
-		    if (getActiveKeys().indexOf(keyName) != -1)
-		        event.isRepeat = true;
-			addActiveKey(keyName);
-		}
-		executeMacros();
-		executeBindings(event);
-	}
-
-	/**
-	 * Key up event handler.
-	 * @param  {KeyboardEvent} event
-	 */
-	function keyup(event) {
-		var keyNames, kI;
-		keyNames = getKeyName(event.keyCode);
-		if(keyNames.length < 1) { return; }
-		for(kI = 0; kI < keyNames.length; kI += 1) {
-			removeActiveKey(keyNames[kI]);
-		}
-		pruneMacros();
-		pruneBindings(event);
-	}
-
-	/**
-	 * Accepts a key code and returns the key names defined by the current
-	 *  locale.
-	 * @param  {Number}	keyCode
-	 * @return {Array}	keyNames	An array of key names defined for the key
-	 *  code as defined by the current locale.
-	 */
-	function getKeyName(keyCode) {
-		return map[keyCode] || [];
-	}
-
-	/**
-	 * Accepts a key name and returns the key code defined by the current
-	 *  locale.
-	 * @param  {Number}	keyName
-	 * @return {Number|false}
-	 */
-	function getKeyCode(keyName) {
-		var keyCode;
-		for(keyCode in map) {
-			if(!map.hasOwnProperty(keyCode)) { continue; }
-			if(map[keyCode].indexOf(keyName) > -1) { return keyCode; }
-		}
-		return false;
-	}
-
-
-	////////////
-	// MACROS //
-	////////////
-
-	/**
-	 * Accepts a key combo and an array of key names to inject once the key
-	 *  combo is satisfied.
-	 * @param  {String}	combo
-	 * @param  {Array}	injectedKeys
-	 */
-	function createMacro(combo, injectedKeys) {
-		if(typeof combo !== 'string' && (typeof combo !== 'object' || typeof combo.push !== 'function')) {
-			throw new Error("Cannot create macro. The combo must be a string or array.");
-		}
-		if(typeof injectedKeys !== 'object' || typeof injectedKeys.push !== 'function') {
-			throw new Error("Cannot create macro. The injectedKeys must be an array.");
-		}
-		macros.push([combo, injectedKeys]);
-	}
-
-	/**
-	 * Accepts a key combo and clears any and all macros bound to that key
-	 * combo.
-	 * @param  {String} combo
-	 */
-	function removeMacro(combo) {
-		var macro;
-		if(typeof combo !== 'string' && (typeof combo !== 'object' || typeof combo.push !== 'function')) { throw new Error("Cannot remove macro. The combo must be a string or array."); }
-		for(mI = 0; mI < macros.length; mI += 1) {
-			macro = macros[mI];
-			if(compareCombos(combo, macro[0])) {
-				removeActiveKey(macro[1]);
-				macros.splice(mI, 1);
-				break;
-			}
-		}
-	}
-
-	/**
-	 * Executes macros against the active keys. Each macro's key combo is
-	 *  checked and if found to be satisfied, the macro's key names are injected
-	 *  into active keys.
-	 */
-	function executeMacros() {
-		var mI, combo, kI;
-		for(mI = 0; mI < macros.length; mI += 1) {
-			combo = parseKeyCombo(macros[mI][0]);
-			if(activeMacros.indexOf(macros[mI]) === -1 && isSatisfiedCombo(combo)) {
-				activeMacros.push(macros[mI]);
-				for(kI = 0; kI < macros[mI][1].length; kI += 1) {
-					addActiveKey(macros[mI][1][kI]);
-				}
-			}
-		}
-	}
-
-	/**
-	 * Prunes active macros. Checks each active macro's key combo and if found
-	 *  to no longer to be satisfied, each of the macro's key names are removed
-	 *  from active keys.
-	 */
-	function pruneMacros() {
-		var mI, combo, kI;
-		for(mI = 0; mI < activeMacros.length; mI += 1) {
-			combo = parseKeyCombo(activeMacros[mI][0]);
-			if(isSatisfiedCombo(combo) === false) {
-				for(kI = 0; kI < activeMacros[mI][1].length; kI += 1) {
-					removeActiveKey(activeMacros[mI][1][kI]);
-				}
-				activeMacros.splice(mI, 1);
-				mI -= 1;
-			}
-		}
-	}
-
-
-	//////////////
-	// BINDINGS //
-	//////////////
-
-	/**
-	 * Creates a binding object, and, if provided, binds a key down hander and
-	 *  a key up handler. Returns a binding object that emits keyup and
-	 *  keydown events.
-	 * @param  {String}		keyCombo
-	 * @param  {Function}	keyDownCallback	[Optional]
-	 * @param  {Function}	keyUpCallback	[Optional]
-	 * @return {Object}		binding
-	 */
-	function createBinding(keyCombo, keyDownCallback, keyUpCallback) {
-		var api = {}, binding, subBindings = [], bindingApi = {}, kI,
-		subCombo;
-
-		//break the combo down into a combo array
-		if(typeof keyCombo === 'string') {
-			keyCombo = parseKeyCombo(keyCombo);
-		}
-
-		//bind each sub combo contained within the combo string
-		for(kI = 0; kI < keyCombo.length; kI += 1) {
-			binding = {};
-
-			//stringify the combo again
-			subCombo = stringifyKeyCombo([keyCombo[kI]]);
-
-			//validate the sub combo
-			if(typeof subCombo !== 'string') { throw new Error('Failed to bind key combo. The key combo must be string.'); }
-
-			//create the binding
-			binding.keyCombo = subCombo;
-			binding.keyDownCallback = [];
-			binding.keyUpCallback = [];
-
-			//inject the key down and key up callbacks if given
-			if(keyDownCallback) { binding.keyDownCallback.push(keyDownCallback); }
-			if(keyUpCallback) { binding.keyUpCallback.push(keyUpCallback); }
-
-			//stash the new binding
-			bindings.push(binding);
-			subBindings.push(binding);
-		}
-
-		//build the binding api
-		api.clear = clear;
-		api.on = on;
-		return api;
-
-		/**
-		 * Clears the binding
-		 */
-		function clear() {
-			var bI;
-			for(bI = 0; bI < subBindings.length; bI += 1) {
-				bindings.splice(bindings.indexOf(subBindings[bI]), 1);
-			}
-		}
-
-		/**
-		 * Accepts an event name. and any number of callbacks. When the event is
-		 *  emitted, all callbacks are executed. Available events are key up and
-		 *  key down.
-		 * @param  {String}	eventName
-		 * @return {Object}	subBinding
-		 */
-		function on(eventName    ) {
-			var api = {}, callbacks, cI, bI;
-
-			//validate event name
-			if(typeof eventName !== 'string') { throw new Error('Cannot bind callback. The event name must be a string.'); }
-			if(eventName !== 'keyup' && eventName !== 'keydown') { throw new Error('Cannot bind callback. The event name must be a "keyup" or "keydown".'); }
-
-			//gather the callbacks
-			callbacks = Array.prototype.slice.apply(arguments, [1]);
-
-			//stash each the new binding
-			for(cI = 0; cI < callbacks.length; cI += 1) {
-				if(typeof callbacks[cI] === 'function') {
-					if(eventName === 'keyup') {
-						for(bI = 0; bI < subBindings.length; bI += 1) {
-							subBindings[bI].keyUpCallback.push(callbacks[cI]);
-						}
-					} else if(eventName === 'keydown') {
-						for(bI = 0; bI < subBindings.length; bI += 1) {
-							subBindings[bI].keyDownCallback.push(callbacks[cI]);
-						}
-					}
-				}
-			}
-
-			//construct and return the sub binding api
-			api.clear = clear;
-			return api;
-
-			/**
-			 * Clears the binding
-			 */
-			function clear() {
-				var cI, bI;
-				for(cI = 0; cI < callbacks.length; cI += 1) {
-					if(typeof callbacks[cI] === 'function') {
-						if(eventName === 'keyup') {
-							for(bI = 0; bI < subBindings.length; bI += 1) {
-								subBindings[bI].keyUpCallback.splice(subBindings[bI].keyUpCallback.indexOf(callbacks[cI]), 1);
-							}
-						} else {
-							for(bI = 0; bI < subBindings.length; bI += 1) {
-								subBindings[bI].keyDownCallback.splice(subBindings[bI].keyDownCallback.indexOf(callbacks[cI]), 1);
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * Clears all binding attached to a given key combo. Key name order does not
-	 * matter as long as the key combos equate.
-	 * @param  {String}	keyCombo
-	 */
-	function removeBindingByKeyCombo(keyCombo) {
-		var bI, binding, keyName;
-		for(bI = 0; bI < bindings.length; bI += 1) {
-			binding = bindings[bI];
-			if(compareCombos(keyCombo, binding.keyCombo)) {
-				bindings.splice(bI, 1); bI -= 1;
-			}
-		}
-	}
-
-	/**
-	 * Clears all binding attached to key combos containing a given key name.
-	 * @param  {String}	keyName
-	 */
-	function removeBindingByKeyName(keyName) {
-		var bI, kI, binding;
-		if(keyName) {
-			for(bI = 0; bI < bindings.length; bI += 1) {
-				binding = bindings[bI];
-				for(kI = 0; kI < binding.keyCombo.length; kI += 1) {
-					if(binding.keyCombo[kI].indexOf(keyName) > -1) {
-						bindings.splice(bI, 1); bI -= 1;
-						break;
-					}
-				}
-			}
-		} else {
-			bindings = [];
-		}
-	}
-
-	/**
-	 * Executes bindings that are active. Only allows the keys to be used once
-	 *  as to prevent binding overlap.
-	 * @param  {KeyboardEvent}	event	The keyboard event.
-	 */
-	function executeBindings(event) {
-		var bI, sBI, binding, bindingKeys, remainingKeys, cI, killEventBubble, kI, bindingKeysSatisfied,
-		index, sortedBindings = [], bindingWeight;
-
-		remainingKeys = [].concat(activeKeys);
-		for(bI = 0; bI < bindings.length; bI += 1) {
-			bindingWeight = extractComboKeys(bindings[bI].keyCombo).length;
-			if(!sortedBindings[bindingWeight]) { sortedBindings[bindingWeight] = []; }
-			sortedBindings[bindingWeight].push(bindings[bI]);
-		}
-		for(sBI = sortedBindings.length - 1; sBI >= 0; sBI -= 1) {
-			if(!sortedBindings[sBI]) { continue; }
-			for(bI = 0; bI < sortedBindings[sBI].length; bI += 1) {
-				binding = sortedBindings[sBI][bI];
-				bindingKeys = extractComboKeys(binding.keyCombo);
-				bindingKeysSatisfied = true;
-				for(kI = 0; kI < bindingKeys.length; kI += 1) {
-					if(remainingKeys.indexOf(bindingKeys[kI]) === -1) {
-						bindingKeysSatisfied = false;
-						break;
-					}
-				}
-				if(bindingKeysSatisfied && isSatisfiedCombo(binding.keyCombo)) {
-					activeBindings.push(binding);
-					for(kI = 0; kI < bindingKeys.length; kI += 1) {
-						index = remainingKeys.indexOf(bindingKeys[kI]);
-						if(index > -1) {
-							remainingKeys.splice(index, 1);
-							kI -= 1;
-						}
-					}
-					for(cI = 0; cI < binding.keyDownCallback.length; cI += 1) {
-						if (binding.keyDownCallback[cI](event, getActiveKeys(), binding.keyCombo) === false) {
-							killEventBubble = true;
-						}
-					}
-					if(killEventBubble === true) {
-						event.preventDefault();
-						event.stopPropagation();
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * Removes bindings that are no longer satisfied by the active keys. Also
-	 *  fires the key up callbacks.
-	 * @param  {KeyboardEvent}	event
-	 */
-	function pruneBindings(event) {
-		var bI, cI, binding, killEventBubble;
-		for(bI = 0; bI < activeBindings.length; bI += 1) {
-			binding = activeBindings[bI];
-			if(isSatisfiedCombo(binding.keyCombo) === false) {
-				for(cI = 0; cI < binding.keyUpCallback.length; cI += 1) {
-					if (binding.keyUpCallback[cI](event, getActiveKeys(), binding.keyCombo) === false) {
-						killEventBubble = true;
-					}
-				}
-				if(killEventBubble === true) {
-					event.preventDefault();
-					event.stopPropagation();
-				}
-				activeBindings.splice(bI, 1);
-				bI -= 1;
-			}
-		}
-	}
-
-
-	///////////////////
-	// COMBO STRINGS //
-	///////////////////
-
-	/**
-	 * Compares two key combos returning true when they are functionally
-	 *  equivalent.
-	 * @param  {String}	keyComboArrayA keyCombo A key combo string or array.
-	 * @param  {String}	keyComboArrayB keyCombo A key combo string or array.
-	 * @return {Boolean}
-	 */
-	function compareCombos(keyComboArrayA, keyComboArrayB) {
-		var cI, sI, kI;
-		keyComboArrayA = parseKeyCombo(keyComboArrayA);
-		keyComboArrayB = parseKeyCombo(keyComboArrayB);
-		if(keyComboArrayA.length !== keyComboArrayB.length) { return false; }
-		for(cI = 0; cI < keyComboArrayA.length; cI += 1) {
-			if(keyComboArrayA[cI].length !== keyComboArrayB[cI].length) { return false; }
-			for(sI = 0; sI < keyComboArrayA[cI].length; sI += 1) {
-				if(keyComboArrayA[cI][sI].length !== keyComboArrayB[cI][sI].length) { return false; }
-				for(kI = 0; kI < keyComboArrayA[cI][sI].length; kI += 1) {
-					if(keyComboArrayB[cI][sI].indexOf(keyComboArrayA[cI][sI][kI]) === -1) { return false; }
-				}
-			}
-		}
-		return true;
-	}
-
-	/**
-	 * Checks to see if a key combo string or key array is satisfied by the
-	 *  currently active keys. It does not take into account spent keys.
-	 * @param  {String}	keyCombo	A key combo string or array.
-	 * @return {Boolean}
-	 */
-	function isSatisfiedCombo(keyCombo) {
-		var cI, sI, stage, kI, stageOffset = 0, index, comboMatches;
-		keyCombo = parseKeyCombo(keyCombo);
-		for(cI = 0; cI < keyCombo.length; cI += 1) {
-			comboMatches = true;
-			stageOffset = 0;
-			for(sI = 0; sI < keyCombo[cI].length; sI += 1) {
-				stage = [].concat(keyCombo[cI][sI]);
-				for(kI = stageOffset; kI < activeKeys.length; kI += 1) {
-					index = stage.indexOf(activeKeys[kI]);
-					if(index > -1) {
-						stage.splice(index, 1);
-						stageOffset = kI;
-					}
-				}
-				if(stage.length !== 0) { comboMatches = false; break; }
-			}
-			if(comboMatches) { return true; }
-		}
-		return false;
-	}
-
-	/**
-	 * Accepts a key combo array or string and returns a flat array containing all keys referenced by
-	 * the key combo.
-	 * @param  {String}	keyCombo	A key combo string or array.
-	 * @return {Array}
-	 */
-	function extractComboKeys(keyCombo) {
-		var cI, sI, kI, keys = [];
-		keyCombo = parseKeyCombo(keyCombo);
-		for(cI = 0; cI < keyCombo.length; cI += 1) {
-			for(sI = 0; sI < keyCombo[cI].length; sI += 1) {
-				keys = keys.concat(keyCombo[cI][sI]);
-			}
-		}
-		return keys;
-	}
-
-	/**
-	 * Parses a key combo string into a 3 dimensional array.
-	 * - Level 1 - sub combos.
-	 * - Level 2 - combo stages. A stage is a set of key name pairs that must
-	 *  be satisfied in the order they are defined.
-	 * - Level 3 - each key name to the stage.
-	 * @param  {String|Array}	keyCombo	A key combo string.
-	 * @return {Array}
-	 */
-	function parseKeyCombo(keyCombo) {
-		var s = keyCombo, i = 0, op = 0, ws = false, nc = false, combos = [], combo = [], stage = [], key = '';
-
-		if(typeof keyCombo === 'object' && typeof keyCombo.push === 'function') { return keyCombo; }
-		if(typeof keyCombo !== 'string') { throw new Error('Cannot parse "keyCombo" because its type is "' + (typeof keyCombo) + '". It must be a "string".'); }
-
-		//remove leading whitespace
-		while(s.charAt(i) === ' ') { i += 1; }
-		while(true) {
-			if(s.charAt(i) === ' ') {
-				//white space & next combo op
-				while(s.charAt(i) === ' ') { i += 1; }
-				ws = true;
-			} else if(s.charAt(i) === ',') {
-				if(op || nc) { throw new Error('Failed to parse key combo. Unexpected , at character index ' + i + '.'); }
-				nc = true;
-				i += 1;
-			} else if(s.charAt(i) === '+') {
-				//next key
-				if(key.length) { stage.push(key); key = ''; }
-				if(op || nc) { throw new Error('Failed to parse key combo. Unexpected + at character index ' + i + '.'); }
-				op = true;
-				i += 1;
-			} else if(s.charAt(i) === '>') {
-				//next stage op
-				if(key.length) { stage.push(key); key = ''; }
-				if(stage.length) { combo.push(stage); stage = []; }
-				if(op || nc) { throw new Error('Failed to parse key combo. Unexpected > at character index ' + i + '.'); }
-				op = true;
-				i += 1;
-			} else if(i < s.length - 1 && s.charAt(i) === '!' && (s.charAt(i + 1) === '>' || s.charAt(i + 1) === ',' || s.charAt(i + 1) === '+')) {
-				key += s.charAt(i + 1);
-				op = false;
-				ws = false;
-				nc = false;
-				i += 2;
-			} else if(i < s.length && s.charAt(i) !== '+' && s.charAt(i) !== '>' && s.charAt(i) !== ',' && s.charAt(i) !== ' ') {
-				//end combo
-				if(op === false && ws === true || nc === true) {
-					if(key.length) { stage.push(key); key = ''; }
-					if(stage.length) { combo.push(stage); stage = []; }
-					if(combo.length) { combos.push(combo); combo = []; }
-				}
-				op = false;
-				ws = false;
-				nc = false;
-				//key
-				while(i < s.length && s.charAt(i) !== '+' && s.charAt(i) !== '>' && s.charAt(i) !== ',' && s.charAt(i) !== ' ') {
-					key += s.charAt(i);
-					i += 1;
-				}
-			} else {
-				//unknown char
-				i += 1;
-				continue;
-			}
-			//end of combos string
-			if(i >= s.length) {
-				if(key.length) { stage.push(key); key = ''; }
-				if(stage.length) { combo.push(stage); stage = []; }
-				if(combo.length) { combos.push(combo); combo = []; }
-				break;
-			}
-		}
-		return combos;
-	}
-
-	/**
-	 * Stringifys a key combo.
-	 * @param  {Array|String}	keyComboArray	A key combo array. If a key
-	 *  combo string is given it will be returned.
-	 * @return {String}
-	 */
-	function stringifyKeyCombo(keyComboArray) {
-		var cI, ccI, output = [];
-		if(typeof keyComboArray === 'string') { return keyComboArray; }
-		if(typeof keyComboArray !== 'object' || typeof keyComboArray.push !== 'function') { throw new Error('Cannot stringify key combo.'); }
-		for(cI = 0; cI < keyComboArray.length; cI += 1) {
-			output[cI] = [];
-			for(ccI = 0; ccI < keyComboArray[cI].length; ccI += 1) {
-				output[cI][ccI] = keyComboArray[cI][ccI].join(' + ');
-			}
-			output[cI] = output[cI].join(' > ');
-		}
-		return output.join(' ');
-	}
-
-
-	/////////////////
-	// ACTIVE KEYS //
-	/////////////////
-
-	/**
-	 * Returns the a copy of the active keys array.
-	 * @return {Array}
-	 */
-	function getActiveKeys() {
-		return [].concat(activeKeys);
-	}
-
-	/**
-	 * Adds a key to the active keys array, but only if it has not already been
-	 *  added.
-	 * @param {String}	keyName	The key name string.
-	 */
-	function addActiveKey(keyName) {
-		if(keyName.match(/\s/)) { throw new Error('Cannot add key name ' + keyName + ' to active keys because it contains whitespace.'); }
-		if(activeKeys.indexOf(keyName) > -1) { return; }
-		activeKeys.push(keyName);
-	}
-
-	/**
-	 * Removes a key from the active keys array.
-	 * @param  {String}	keyNames	The key name string.
-	 */
-	function removeActiveKey(keyName) {
-		var keyCode = getKeyCode(keyName);
-		if(keyCode === '91' || keyCode === '92') { activeKeys = []; } //remove all key on release of super.
-		else { activeKeys.splice(activeKeys.indexOf(keyName), 1); }
-		// Mac Specific remove all keys on release of super
-		if(/^Mac/.test(navigator.platform)){
-			// Chrome,Safari
-			if(/Chrome/.test(navigator.userAgent) ||
-				 /Safari/.test(navigator.userAgent)){
-				if(keyCode === '91' || keyCode === '93') { activeKeys = []; }
-			}
-			// Opera
-			if(/Opera/.test(navigator.userAgent) && keyCode == "17"){
-				activeKeys = [];
-			}
-			// Firefox
-			if(/Firefox/.test(navigator.userAgent) && keyCode == "224"){
-				activeKeys = [];
-			}
-		}
-	}
-
-
-	/////////////
-	// LOCALES //
-	/////////////
-
-	/**
-	 * Registers a new locale. This is useful if you would like to add support for a new keyboard layout. It could also be useful for
-	 * alternative key names. For example if you program games you could create a locale for your key mappings. Instead of key 65 mapped
-	 * to 'a' you could map it to 'jump'.
-	 * @param  {String}	localeName	The name of the new locale.
-	 * @param  {Object}	localeMap	The locale map.
-	 */
-	function registerLocale(localeName, localeMap) {
-
-		//validate arguments
-		if(typeof localeName !== 'string') { throw new Error('Cannot register new locale. The locale name must be a string.'); }
-		if(typeof localeMap !== 'object') { throw new Error('Cannot register ' + localeName + ' locale. The locale map must be an object.'); }
-		if(typeof localeMap.map !== 'object') { throw new Error('Cannot register ' + localeName + ' locale. The locale map is invalid.'); }
-
-		//stash the locale
-		if(!localeMap.macros) { localeMap.macros = []; }
-		locales[localeName] = localeMap;
-	}
-
-	/**
-	 * Swaps the current locale.
-	 * @param  {String}	localeName	The locale to activate.
-	 * @return {Object}
-	 */
-	function getSetLocale(localeName) {
-
-		//if a new locale is given then set it
-		if(localeName) {
-			if(typeof localeName !== 'string') { throw new Error('Cannot set locale. The locale name must be a string.'); }
-			if(!locales[localeName]) { throw new Error('Cannot set locale to ' + localeName + ' because it does not exist. If you would like to submit a ' + localeName + ' locale map for KeyboardJS please submit it at https://github.com/RobertWHurst/KeyboardJS/issues.'); }
-
-			//set the current map and macros
-			map = locales[localeName].map;
-			macros = locales[localeName].macros;
-
-			//set the current locale
-			locale = localeName;
-		}
-
-		//return the current locale
-		return locale;
-	}
-});
-
-
+},{}],3:[function(require,module,exports){
+
+var Keyboard = require('./lib/keyboard');
+var Locale   = require('./lib/locale');
+var KeyCombo = require('./lib/key-combo');
+
+var keyboard = new Keyboard();
+
+keyboard.setLocale('us', require('./locales/us'));
+
+exports          = module.exports = keyboard;
+exports.Keyboard = Keyboard;
+exports.Locale   = Locale;
+exports.KeyCombo = KeyCombo;
+
+},{"./lib/key-combo":4,"./lib/keyboard":5,"./lib/locale":6,"./locales/us":7}],4:[function(require,module,exports){
+
+function KeyCombo(keyComboStr) {
+  this.sourceStr = keyComboStr;
+  this.subCombos = KeyCombo.parseComboStr(keyComboStr);
+  this.keyNames  = this.subCombos.reduce(function(memo, nextSubCombo) {
+    return memo.concat(nextSubCombo);
+  });
+}
+
+// TODO: Add support for key combo sequences
+KeyCombo.sequenceDeliminator = '>>';
+KeyCombo.comboDeliminator    = '>';
+KeyCombo.keyDeliminator      = '+';
+
+KeyCombo.parseComboStr = function(keyComboStr) {
+  var subComboStrs = KeyCombo._splitStr(keyComboStr, KeyCombo.comboDeliminator);
+  var combo        = [];
+
+  for (var i = 0 ; i < subComboStrs.length; i += 1) {
+    combo.push(KeyCombo._splitStr(subComboStrs[i], KeyCombo.keyDeliminator));
+  }
+  return combo;
+};
+
+KeyCombo.prototype.check = function(pressedKeyNames) {
+  var startingKeyNameIndex = 0;
+  for (var i = 0; i < this.subCombos.length; i += 1) {
+    startingKeyNameIndex = this._checkSubCombo(
+      this.subCombos[i],
+      startingKeyNameIndex,
+      pressedKeyNames
+    );
+    if (startingKeyNameIndex === -1) { return false; }
+  }
+  return true;
+};
+
+KeyCombo.prototype.isEqual = function(otherKeyCombo) {
+  if (
+    !otherKeyCombo ||
+    typeof otherKeyCombo !== 'string' &&
+    typeof otherKeyCombo !== 'object'
+  ) { return false; }
+
+  if (typeof otherKeyCombo === 'string') {
+    otherKeyCombo = new KeyCombo(otherKeyCombo);
+  }
+
+  if (this.subCombos.length !== otherKeyCombo.subCombos.length) {
+    return false;
+  }
+  for (var i = 0; i < this.subCombos.length; i += 1) {
+    if (this.subCombos[i].length !== otherKeyCombo.subCombos[i].length) {
+      return false;
+    }
+  }
+
+  for (var i = 0; i < this.subCombos.length; i += 1) {
+    var subCombo      = this.subCombos[i];
+    var otherSubCombo = otherKeyCombo.subCombos[i].slice(0);
+
+    for (var j = 0; j < subCombo.length; j += 1) {
+      var keyName = subCombo[j];
+      var index   = otherSubCombo.indexOf(keyName);
+
+      if (index > -1) {
+        otherSubCombo.splice(index, 1);
+      }
+    }
+    if (otherSubCombo.length !== 0) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+KeyCombo._splitStr = function(str, deliminator) {
+  var s  = str;
+  var d  = deliminator;
+  var c  = '';
+  var ca = [];
+
+  for (var ci = 0; ci < s.length; ci += 1) {
+    if (ci > 0 && s[ci] === d && s[ci - 1] !== '\\') {
+      ca.push(c.trim());
+      c = '';
+      ci += 1;
+    }
+    c += s[ci];
+  }
+  if (c) { ca.push(c.trim()); }
+
+  return ca;
+};
+
+KeyCombo.prototype._checkSubCombo = function(subCombo, startingKeyNameIndex, pressedKeyNames) {
+  subCombo = subCombo.slice(0);
+  pressedKeyNames = pressedKeyNames.slice(startingKeyNameIndex);
+
+  var endIndex = startingKeyNameIndex;
+  for (var i = 0; i < subCombo.length; i += 1) {
+
+    var keyName = subCombo[i];
+    if (keyName[0] === '\\') {
+      var escapedKeyName = keyName.slice(1);
+      if (
+        escapedKeyName === KeyCombo.comboDeliminator ||
+        escapedKeyName === KeyCombo.keyDeliminator
+      ) {
+        keyName = escapedKeyName;
+      }
+    }
+
+    var index = pressedKeyNames.indexOf(keyName);
+    if (index > -1) {
+      subCombo.splice(i, 1);
+      i -= 1;
+      if (index > endIndex) {
+        endIndex = index;
+      }
+      if (subCombo.length === 0) {
+        return endIndex;
+      }
+    }
+  }
+  return -1;
+};
+
+
+module.exports = KeyCombo;
 
 },{}],5:[function(require,module,exports){
+(function (global){
+
+var Locale = require('./locale');
+var KeyCombo = require('./key-combo');
+
+
+function Keyboard(targetWindow, targetElement, platform, userAgent) {
+  this._locale               = null;
+  this._currentContext       = null;
+  this._contexts             = {};
+  this._listeners            = [];
+  this._appliedListeners     = [];
+  this._locales              = {};
+  this._targetElement        = null;
+  this._targetWindow         = null;
+  this._targetPlatform       = '';
+  this._targetUserAgent      = '';
+  this._isModernBrowser      = false;
+  this._targetKeyDownBinding = null;
+  this._targetKeyUpBinding   = null;
+  this._targetResetBinding   = null;
+  this._paused               = false;
+
+  this.setContext('global');
+  this.watch(targetWindow, targetElement, platform, userAgent);
+}
+
+Keyboard.prototype.setLocale = function(localeName, localeBuilder) {
+  var locale = null;
+  if (typeof localeName === 'string') {
+
+    if (localeBuilder) {
+      locale = new Locale(localeName);
+      localeBuilder(locale, this._targetPlatform, this._targetUserAgent);
+    } else {
+      locale = this._locales[localeName] || null;
+    }
+  } else {
+    locale     = localeName;
+    localeName = locale._localeName;
+  }
+
+  this._locale              = locale;
+  this._locales[localeName] = locale;
+  if (locale) {
+    this._locale.pressedKeys = locale.pressedKeys;
+  }
+};
+
+Keyboard.prototype.getLocale = function(localName) {
+  localName || (localName = this._locale.localeName);
+  return this._locales[localName] || null;
+};
+
+Keyboard.prototype.bind = function(keyComboStr, pressHandler, releaseHandler, preventRepeatByDefault) {
+  if (keyComboStr === null || typeof keyComboStr === 'function') {
+    preventRepeatByDefault = releaseHandler;
+    releaseHandler         = pressHandler;
+    pressHandler           = keyComboStr;
+    keyComboStr            = null;
+  }
+
+  if (
+    keyComboStr &&
+    typeof keyComboStr === 'object' &&
+    typeof keyComboStr.length === 'number'
+  ) {
+    for (var i = 0; i < keyComboStr.length; i += 1) {
+      this.bind(keyComboStr[i], pressHandler, releaseHandler);
+    }
+    return;
+  }
+
+  this._listeners.push({
+    keyCombo               : keyComboStr ? new KeyCombo(keyComboStr) : null,
+    pressHandler           : pressHandler           || null,
+    releaseHandler         : releaseHandler         || null,
+    preventRepeat          : preventRepeatByDefault || false,
+    preventRepeatByDefault : preventRepeatByDefault || false
+  });
+};
+Keyboard.prototype.addListener = Keyboard.prototype.bind;
+Keyboard.prototype.on          = Keyboard.prototype.bind;
+
+Keyboard.prototype.unbind = function(keyComboStr, pressHandler, releaseHandler) {
+  if (keyComboStr === null || typeof keyComboStr === 'function') {
+    releaseHandler = pressHandler;
+    pressHandler   = keyComboStr;
+    keyComboStr = null;
+  }
+
+  if (
+    keyComboStr &&
+    typeof keyComboStr === 'object' &&
+    typeof keyComboStr.length === 'number'
+  ) {
+    for (var i = 0; i < keyComboStr.length; i += 1) {
+      this.unbind(keyComboStr[i], pressHandler, releaseHandler);
+    }
+    return;
+  }
+
+  for (var i = 0; i < this._listeners.length; i += 1) {
+    var listener = this._listeners[i];
+
+    var comboMatches          = !keyComboStr && !listener.keyCombo ||
+                                listener.keyCombo.isEqual(keyComboStr);
+    var pressHandlerMatches   = !pressHandler && !releaseHandler ||
+                                !pressHandler && !listener.pressHandler ||
+                                pressHandler === listener.pressHandler;
+    var releaseHandlerMatches = !pressHandler && !releaseHandler ||
+                                !releaseHandler && !listener.releaseHandler ||
+                                releaseHandler === listener.releaseHandler;
+
+    if (comboMatches && pressHandlerMatches && releaseHandlerMatches) {
+      this._listeners.splice(i, 1);
+      i -= 1;
+    }
+  }
+};
+Keyboard.prototype.removeListener = Keyboard.prototype.unbind;
+Keyboard.prototype.off            = Keyboard.prototype.unbind;
+
+Keyboard.prototype.setContext = function(contextName) {
+  if(this._locale) { this.releaseAllKeys(); }
+
+  if (!this._contexts[contextName]) {
+    this._contexts[contextName] = [];
+  }
+  this._listeners      = this._contexts[contextName];
+  this._currentContext = contextName;
+};
+
+Keyboard.prototype.getContext = function() {
+  return this._currentContext;
+};
+
+Keyboard.prototype.withContext = function(contextName, callback) {
+  var previousContextName = this.getContext();
+  this.setContext(contextName);
+
+  callback();
+
+  this.setContext(previousContextName);
+};
+
+Keyboard.prototype.watch = function(targetWindow, targetElement, targetPlatform, targetUserAgent) {
+  var _this = this;
+
+  this.stop();
+
+  if (!targetWindow) {
+    if (!global.addEventListener && !global.attachEvent) {
+      throw new Error('Cannot find global functions addEventListener or attachEvent.');
+    }
+    targetWindow = global;
+  }
+
+  if (typeof targetWindow.nodeType === 'number') {
+    targetUserAgent = targetPlatform;
+    targetPlatform  = targetElement;
+    targetElement   = targetWindow;
+    targetWindow    = global;
+  }
+  
+  if (!targetWindow.addEventListener && !targetWindow.attachEvent) {
+    throw new Error('Cannot find addEventListener or attachEvent methods on targetWindow.');
+  }
+  
+  this._isModernBrowser = !!targetWindow.addEventListener;
+
+  var userAgent = targetWindow.navigator && targetWindow.navigator.userAgent || '';
+  var platform  = targetWindow.navigator && targetWindow.navigator.platform  || '';
+
+  targetElement   && targetElement   !== null || (targetElement   = targetWindow.document);
+  targetPlatform  && targetPlatform  !== null || (targetPlatform  = platform);
+  targetUserAgent && targetUserAgent !== null || (targetUserAgent = userAgent);
+
+  this._targetKeyDownBinding = function(event) {
+    _this.pressKey(event.keyCode, event);
+  };
+  this._targetKeyUpBinding = function(event) {
+    _this.releaseKey(event.keyCode, event);
+  };
+  this._targetResetBinding = function(event) {
+    _this.releaseAllKeys(event)
+  };
+
+  this._bindEvent(targetElement, 'keydown', this._targetKeyDownBinding);
+  this._bindEvent(targetElement, 'keyup',   this._targetKeyUpBinding);
+  this._bindEvent(targetWindow,  'focus',   this._targetResetBinding);
+  this._bindEvent(targetWindow,  'blur',    this._targetResetBinding);
+
+  this._targetElement   = targetElement;
+  this._targetWindow    = targetWindow;
+  this._targetPlatform  = targetPlatform;
+  this._targetUserAgent = targetUserAgent;
+};
+
+Keyboard.prototype.stop = function() {
+  var _this = this;
+
+  if (!this._targetElement || !this._targetWindow) { return; }
+
+  this._unbindEvent(this._targetElement, 'keydown', this._targetKeyDownBinding);
+  this._unbindEvent(this._targetElement, 'keyup',   this._targetKeyUpBinding);
+  this._unbindEvent(this._targetWindow,  'focus',   this._targetResetBinding);
+  this._unbindEvent(this._targetWindow,  'blur',    this._targetResetBinding);
+
+  this._targetWindow  = null;
+  this._targetElement = null;
+};
+
+Keyboard.prototype.pressKey = function(keyCode, event) {
+  if (this._paused) { return; }
+  if (!this._locale) { throw new Error('Locale not set'); }
+
+  this._locale.pressKey(keyCode);
+  this._applyBindings(event);
+};
+
+Keyboard.prototype.releaseKey = function(keyCode, event) {
+  if (this._paused) { return; }
+  if (!this._locale) { throw new Error('Locale not set'); }
+
+  this._locale.releaseKey(keyCode);
+  this._clearBindings(event);
+};
+
+Keyboard.prototype.releaseAllKeys = function(event) {
+  if (this._paused) { return; }
+  if (!this._locale) { throw new Error('Locale not set'); }
+
+  this._locale.pressedKeys.length = 0;
+  this._clearBindings(event);
+};
+
+Keyboard.prototype.pause = function() {
+  if (this._paused) { return; }
+  if (this._locale) { this.releaseAllKeys(); }
+  this._paused = true;
+};
+
+Keyboard.prototype.resume = function() {
+  this._paused = false;
+};
+
+Keyboard.prototype.reset = function() {
+  this.releaseAllKeys();
+  this._listeners.length = 0;
+};
+
+Keyboard.prototype._bindEvent = function(targetElement, eventName, handler) {
+  return this._isModernBrowser ?
+    targetElement.addEventListener(eventName, handler, false) :
+    targetElement.attachEvent('on' + eventName, handler);
+};
+
+Keyboard.prototype._unbindEvent = function(targetElement, eventName, handler) {
+  return this._isModernBrowser ?
+    targetElement.removeEventListener(eventName, handler, false) :
+    targetElement.detachEvent('on' + eventName, handler);
+};
+
+Keyboard.prototype._getGroupedListeners = function() {
+  var listenerGroups   = [];
+  var listenerGroupMap = [];
+
+  var listeners = this._listeners;
+  if (this._currentContext !== 'global') {
+    listeners = [].concat(listeners, this._contexts.global);
+  }
+
+  listeners.sort(function(a, b) {
+    return a.keyCombo.keyNames.length < b.keyCombo.keyNames.length;
+  }).forEach(function(l) {
+    var mapIndex = -1;
+    for (var i = 0; i < listenerGroupMap.length; i += 1) {
+      if (listenerGroupMap[i].isEqual(l.keyCombo)) {
+        mapIndex = i;
+      }
+    }
+    if (mapIndex === -1) {
+      mapIndex = listenerGroupMap.length;
+      listenerGroupMap.push(l.keyCombo);
+    }
+    if (!listenerGroups[mapIndex]) {
+      listenerGroups[mapIndex] = [];
+    }
+    listenerGroups[mapIndex].push(l);
+  });
+  return listenerGroups;
+};
+
+Keyboard.prototype._applyBindings = function(event) {
+  var preventRepeat = false;
+
+  event || (event = {});
+  event.preventRepeat = function() { preventRepeat = true; };
+  event.pressedKeys   = this._locale.pressedKeys.slice(0);
+
+  var pressedKeys    = this._locale.pressedKeys.slice(0);
+  var listenerGroups = this._getGroupedListeners();
+
+
+  for (var i = 0; i < listenerGroups.length; i += 1) {
+    var listeners = listenerGroups[i];
+    var keyCombo  = listeners[0].keyCombo;
+
+    if (keyCombo === null || keyCombo.check(pressedKeys)) {
+      for (var j = 0; j < listeners.length; j += 1) {
+        var listener = listeners[j];
+
+        if (keyCombo === null) {
+          listener = {
+            keyCombo               : new KeyCombo(pressedKeys.join('+')),
+            pressHandler           : listener.pressHandler,
+            releaseHandler         : listener.releaseHandler,
+            preventRepeat          : listener.preventRepeat,
+            preventRepeatByDefault : listener.preventRepeatByDefault
+          };
+        }
+
+        if (listener.pressHandler && !listener.preventRepeat) {
+          listener.pressHandler.call(this, event);
+          if (preventRepeat) {
+            listener.preventRepeat = preventRepeat;
+            preventRepeat          = false;
+          }
+        }
+
+        if (listener.releaseHandler && this._appliedListeners.indexOf(listener) === -1) {
+          this._appliedListeners.push(listener);
+        }
+      }
+
+      if (keyCombo) {
+        for (var j = 0; j < keyCombo.keyNames.length; j += 1) {
+          var index = pressedKeys.indexOf(keyCombo.keyNames[j]);
+          if (index !== -1) {
+            pressedKeys.splice(index, 1);
+            j -= 1;
+          }
+        }
+      }
+    }
+  }
+};
+
+Keyboard.prototype._clearBindings = function(event) {
+  event || (event = {});
+
+  for (var i = 0; i < this._appliedListeners.length; i += 1) {
+    var listener = this._appliedListeners[i];
+    var keyCombo = listener.keyCombo;
+    if (keyCombo === null || !keyCombo.check(this._locale.pressedKeys)) {
+      listener.preventRepeat = listener.preventRepeatByDefault;
+      listener.releaseHandler.call(this, event);
+      this._appliedListeners.splice(i, 1);
+      i -= 1;
+    }
+  }
+};
+
+module.exports = Keyboard;
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./key-combo":4,"./locale":6}],6:[function(require,module,exports){
+
+var KeyCombo = require('./key-combo');
+
+
+function Locale(name) {
+  this.localeName     = name;
+  this.pressedKeys    = [];
+  this._appliedMacros = [];
+  this._keyMap        = {};
+  this._killKeyCodes  = [];
+  this._macros        = [];
+}
+
+Locale.prototype.bindKeyCode = function(keyCode, keyNames) {
+  if (typeof keyNames === 'string') {
+    keyNames = [keyNames];
+  }
+
+  this._keyMap[keyCode] = keyNames;
+};
+
+Locale.prototype.bindMacro = function(keyComboStr, keyNames) {
+  if (typeof keyNames === 'string') {
+    keyNames = [ keyNames ];
+  }
+
+  var handler = null;
+  if (typeof keyNames === 'function') {
+    handler = keyNames;
+    keyNames = null;
+  }
+
+  var macro = {
+    keyCombo : new KeyCombo(keyComboStr),
+    keyNames : keyNames,
+    handler  : handler
+  };
+
+  this._macros.push(macro);
+};
+
+Locale.prototype.getKeyCodes = function(keyName) {
+  var keyCodes = [];
+  for (var keyCode in this._keyMap) {
+    var index = this._keyMap[keyCode].indexOf(keyName);
+    if (index > -1) { keyCodes.push(keyCode|0); }
+  }
+  return keyCodes;
+};
+
+Locale.prototype.getKeyNames = function(keyCode) {
+  return this._keyMap[keyCode] || [];
+};
+
+Locale.prototype.setKillKey = function(keyCode) {
+  if (typeof keyCode === 'string') {
+    var keyCodes = this.getKeyCodes(keyCode);
+    for (var i = 0; i < keyCodes.length; i += 1) {
+      this.setKillKey(keyCodes[i]);
+    }
+    return;
+  }
+
+  this._killKeyCodes.push(keyCode);
+};
+
+Locale.prototype.pressKey = function(keyCode) {
+  if (typeof keyCode === 'string') {
+    var keyCodes = this.getKeyCodes(keyCode);
+    for (var i = 0; i < keyCodes.length; i += 1) {
+      this.pressKey(keyCodes[i]);
+    }
+    return;
+  }
+
+  var keyNames = this.getKeyNames(keyCode);
+  for (var i = 0; i < keyNames.length; i += 1) {
+    if (this.pressedKeys.indexOf(keyNames[i]) === -1) {
+      this.pressedKeys.push(keyNames[i]);
+    }
+  }
+
+  this._applyMacros();
+};
+
+Locale.prototype.releaseKey = function(keyCode) {
+  if (typeof keyCode === 'string') {
+    var keyCodes = this.getKeyCodes(keyCode);
+    for (var i = 0; i < keyCodes.length; i += 1) {
+      this.releaseKey(keyCodes[i]);
+    }
+  }
+
+  else {
+    var keyNames         = this.getKeyNames(keyCode);
+    var killKeyCodeIndex = this._killKeyCodes.indexOf(keyCode);
+    
+    if (killKeyCodeIndex > -1) {
+      this.pressedKeys.length = 0;
+    } else {
+      for (var i = 0; i < keyNames.length; i += 1) {
+        var index = this.pressedKeys.indexOf(keyNames[i]);
+        if (index > -1) {
+          this.pressedKeys.splice(index, 1);
+        }
+      }
+    }
+
+    this._clearMacros();
+  }
+};
+
+Locale.prototype._applyMacros = function() {
+  var macros = this._macros.slice(0);
+  for (var i = 0; i < macros.length; i += 1) {
+    var macro = macros[i];
+    if (macro.keyCombo.check(this.pressedKeys)) {
+      if (macro.handler) {
+        macro.keyNames = macro.handler(this.pressedKeys);
+      }
+      for (var j = 0; j < macro.keyNames.length; j += 1) {
+        if (this.pressedKeys.indexOf(macro.keyNames[j]) === -1) {
+          this.pressedKeys.push(macro.keyNames[j]);
+        }
+      }
+      this._appliedMacros.push(macro);
+    }
+  }
+};
+
+Locale.prototype._clearMacros = function() {
+  for (var i = 0; i < this._appliedMacros.length; i += 1) {
+    var macro = this._appliedMacros[i];
+    if (!macro.keyCombo.check(this.pressedKeys)) {
+      for (var j = 0; j < macro.keyNames.length; j += 1) {
+        var index = this.pressedKeys.indexOf(macro.keyNames[j]);
+        if (index > -1) {
+          this.pressedKeys.splice(index, 1);
+        }
+      }
+      if (macro.handler) {
+        macro.keyNames = null;
+      }
+      this._appliedMacros.splice(i, 1);
+      i -= 1;
+    }
+  }
+};
+
+
+module.exports = Locale;
+
+},{"./key-combo":4}],7:[function(require,module,exports){
+
+module.exports = function(locale, platform, userAgent) {
+
+  // general
+  locale.bindKeyCode(3,   ['cancel']);
+  locale.bindKeyCode(8,   ['backspace']);
+  locale.bindKeyCode(9,   ['tab']);
+  locale.bindKeyCode(12,  ['clear']);
+  locale.bindKeyCode(13,  ['enter']);
+  locale.bindKeyCode(16,  ['shift']);
+  locale.bindKeyCode(17,  ['ctrl']);
+  locale.bindKeyCode(18,  ['alt', 'menu']);
+  locale.bindKeyCode(19,  ['pause', 'break']);
+  locale.bindKeyCode(20,  ['capslock']);
+  locale.bindKeyCode(27,  ['escape', 'esc']);
+  locale.bindKeyCode(32,  ['space', 'spacebar']);
+  locale.bindKeyCode(33,  ['pageup']);
+  locale.bindKeyCode(34,  ['pagedown']);
+  locale.bindKeyCode(35,  ['end']);
+  locale.bindKeyCode(36,  ['home']);
+  locale.bindKeyCode(37,  ['left']);
+  locale.bindKeyCode(38,  ['up']);
+  locale.bindKeyCode(39,  ['right']);
+  locale.bindKeyCode(40,  ['down']);
+  locale.bindKeyCode(41,  ['select']);
+  locale.bindKeyCode(42,  ['printscreen']);
+  locale.bindKeyCode(43,  ['execute']);
+  locale.bindKeyCode(44,  ['snapshot']);
+  locale.bindKeyCode(45,  ['insert', 'ins']);
+  locale.bindKeyCode(46,  ['delete', 'del']);
+  locale.bindKeyCode(47,  ['help']);
+  locale.bindKeyCode(145, ['scrolllock', 'scroll']);
+  locale.bindKeyCode(187, ['equal', 'equalsign', '=']);
+  locale.bindKeyCode(188, ['comma', ',']);
+  locale.bindKeyCode(190, ['period', '.']);
+  locale.bindKeyCode(191, ['slash', 'forwardslash', '/']);
+  locale.bindKeyCode(192, ['graveaccent', '`']);
+  locale.bindKeyCode(219, ['openbracket', '[']);
+  locale.bindKeyCode(220, ['backslash', '\\']);
+  locale.bindKeyCode(221, ['closebracket', ']']);
+  locale.bindKeyCode(222, ['apostrophe', '\'']);
+
+  // 0-9
+  locale.bindKeyCode(48, ['zero', '0']);
+  locale.bindKeyCode(49, ['one', '1']);
+  locale.bindKeyCode(50, ['two', '2']);
+  locale.bindKeyCode(51, ['three', '3']);
+  locale.bindKeyCode(52, ['four', '4']);
+  locale.bindKeyCode(53, ['five', '5']);
+  locale.bindKeyCode(54, ['six', '6']);
+  locale.bindKeyCode(55, ['seven', '7']);
+  locale.bindKeyCode(56, ['eight', '8']);
+  locale.bindKeyCode(57, ['nine', '9']);
+
+  // numpad
+  locale.bindKeyCode(96, ['numzero', 'num0']);
+  locale.bindKeyCode(97, ['numone', 'num1']);
+  locale.bindKeyCode(98, ['numtwo', 'num2']);
+  locale.bindKeyCode(99, ['numthree', 'num3']);
+  locale.bindKeyCode(100, ['numfour', 'num4']);
+  locale.bindKeyCode(101, ['numfive', 'num5']);
+  locale.bindKeyCode(102, ['numsix', 'num6']);
+  locale.bindKeyCode(103, ['numseven', 'num7']);
+  locale.bindKeyCode(104, ['numeight', 'num8']);
+  locale.bindKeyCode(105, ['numnine', 'num9']);
+  locale.bindKeyCode(106, ['nummultiply', 'num*']);
+  locale.bindKeyCode(107, ['numadd', 'num+']);
+  locale.bindKeyCode(108, ['numenter']);
+  locale.bindKeyCode(109, ['numsubtract', 'num-']);
+  locale.bindKeyCode(110, ['numdecimal', 'num.']);
+  locale.bindKeyCode(111, ['numdivide', 'num/']);
+  locale.bindKeyCode(144, ['numlock', 'num']);
+
+  // function keys
+  locale.bindKeyCode(112, ['f1']);
+  locale.bindKeyCode(113, ['f2']);
+  locale.bindKeyCode(114, ['f3']);
+  locale.bindKeyCode(115, ['f4']);
+  locale.bindKeyCode(116, ['f5']);
+  locale.bindKeyCode(117, ['f6']);
+  locale.bindKeyCode(118, ['f7']);
+  locale.bindKeyCode(119, ['f8']);
+  locale.bindKeyCode(120, ['f9']);
+  locale.bindKeyCode(121, ['f10']);
+  locale.bindKeyCode(122, ['f11']);
+  locale.bindKeyCode(123, ['f12']);
+
+  // secondary key symbols
+  locale.bindMacro('shift + `', ['tilde', '~']);
+  locale.bindMacro('shift + 1', ['exclamation', 'exclamationpoint', '!']);
+  locale.bindMacro('shift + 2', ['at', '@']);
+  locale.bindMacro('shift + 3', ['number', '#']);
+  locale.bindMacro('shift + 4', ['dollar', 'dollars', 'dollarsign', '$']);
+  locale.bindMacro('shift + 5', ['percent', '%']);
+  locale.bindMacro('shift + 6', ['caret', '^']);
+  locale.bindMacro('shift + 7', ['ampersand', 'and', '&']);
+  locale.bindMacro('shift + 8', ['asterisk', '*']);
+  locale.bindMacro('shift + 9', ['openparen', '(']);
+  locale.bindMacro('shift + 0', ['closeparen', ')']);
+  locale.bindMacro('shift + -', ['underscore', '_']);
+  locale.bindMacro('shift + =', ['plus', '+']);
+  locale.bindMacro('shift + [', ['opencurlybrace', 'opencurlybracket', '{']);
+  locale.bindMacro('shift + ]', ['closecurlybrace', 'closecurlybracket', '}']);
+  locale.bindMacro('shift + \\', ['verticalbar', '|']);
+  locale.bindMacro('shift + ;', ['colon', ':']);
+  locale.bindMacro('shift + \'', ['quotationmark', '\'']);
+  locale.bindMacro('shift + !,', ['openanglebracket', '<']);
+  locale.bindMacro('shift + .', ['closeanglebracket', '>']);
+  locale.bindMacro('shift + /', ['questionmark', '?']);
+
+  //a-z and A-Z
+  for (var keyCode = 65; keyCode <= 90; keyCode += 1) {
+    var keyName = String.fromCharCode(keyCode + 32);
+    var capitalKeyName = String.fromCharCode(keyCode);
+  	locale.bindKeyCode(keyCode, keyName);
+  	locale.bindMacro('shift + ' + keyName, capitalKeyName);
+  	locale.bindMacro('capslock + ' + keyName, capitalKeyName);
+  }
+
+  // browser caveats
+  var semicolonKeyCode = userAgent.match('Firefox') ? 59  : 186;
+  var dashKeyCode      = userAgent.match('Firefox') ? 173 : 189;
+  var leftCommandKeyCode;
+  var rightCommandKeyCode;
+  if (platform.match('Mac') && (userAgent.match('Safari') || userAgent.match('Chrome'))) {
+    leftCommandKeyCode  = 91;
+    rightCommandKeyCode = 93;
+  } else if(platform.match('Mac') && userAgent.match('Opera')) {
+    leftCommandKeyCode  = 17;
+    rightCommandKeyCode = 17;
+  } else if(platform.match('Mac') && userAgent.match('Firefox')) {
+    leftCommandKeyCode  = 224;
+    rightCommandKeyCode = 224;
+  }
+  locale.bindKeyCode(semicolonKeyCode,    ['semicolon', ';']);
+  locale.bindKeyCode(dashKeyCode,         ['dash', '-']);
+  locale.bindKeyCode(leftCommandKeyCode,  ['command', 'windows', 'win', 'super', 'leftcommand', 'leftwindows', 'leftwin', 'leftsuper']);
+  locale.bindKeyCode(rightCommandKeyCode, ['command', 'windows', 'win', 'super', 'rightcommand', 'rightwindows', 'rightwin', 'rightsuper']);
+
+  // kill keys
+  locale.setKillKey('command');
+};
+
+},{}],8:[function(require,module,exports){
 // Copyright (c) 2013 Pieroxy <pieroxy@pieroxy.net>
 // This work is free. You can redistribute it and/or modify it
 // under the terms of the WTFPL, Version 2
@@ -11368,7 +11401,7 @@ if (typeof define === 'function' && define.amd) {
   module.exports = LZString
 }
 
-},{}],6:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 "use strict";
 
 var elements = require("./elements");
@@ -11382,7 +11415,7 @@ for (var i = 0; i <= 118; i++) {
 
 module.exports.MIN_ATOM_RADIUS = MIN_ATOM_RADIUS;
 module.exports.MAX_ATOM_RADIUS = MAX_ATOM_RADIUS;
-},{"./elements":8}],7:[function(require,module,exports){
+},{"./elements":11}],10:[function(require,module,exports){
 
 var n = -1;
 var p = 1;
@@ -11494,7 +11527,7 @@ module.exports = {
 	]
 
 };
-},{}],8:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 module.exports = {};
 module.exports[  0] = module.exports[ 'Xx'] = {'symbol':  'Xx', 'name':       'unknown', 'mass':   1.00000000, 'radius':  1.0000, 'color': [1.000, 0.078, 0.576], 'number': 0};
 module.exports[  1] = module.exports[  'H'] = {'symbol':   'H', 'name':      'hydrogen', 'mass':   1.00794000, 'radius':  0.3100, 'color': [1.000, 1.000, 1.000], 'number': 1};
@@ -11616,7 +11649,7 @@ module.exports[116] = module.exports['Uuh'] = {'symbol': 'Uuh', 'name':         
 module.exports[117] = module.exports['Uus'] = {'symbol': 'Uus', 'name':           'Uus', 'mass': 294.00000000, 'radius':  1.6500, 'color': [0.922, 0.000, 0.149], 'number': 117};
 module.exports[118] = module.exports['Uuo'] = {'symbol': 'Uuo', 'name':           'Uuo', 'mass': 296.00000000, 'radius':  1.5700, 'color': [0.922, 0.000, 0.149], 'number': 118};
 
-},{}],9:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 /**
  * @fileoverview gl-matrix - High performance matrix and vector operations
  * @author Brandon Jones
@@ -15933,7 +15966,7 @@ if(typeof(exports) !== 'undefined') {
   })(shim.exports);
 })(this);
 
-},{}],10:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 
 "use strict";
 
@@ -15953,7 +15986,7 @@ for (var i = 0; i < formats.length; i++) {
 }
 
 
-},{}],11:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 module.exports = {
     default: {
         atomScale: 0.6,
@@ -15993,13 +16026,12 @@ module.exports = {
         bondThreshold: 1.2,
     },
 };
-},{}],12:[function(require,module,exports){
-(function (__dirname){
+},{}],15:[function(require,module,exports){
 "use strict";
 
 var glm = require('./gl-matrix');
 var webgl = require('./webgl.js');
-var fs = require('fs');
+
 var cube = require("./cube");
 var elements = require("./elements");
 var View = require("./view");
@@ -16077,13 +16109,13 @@ module.exports = function (canvas, resolution, aoResolution) {
             self.createTextures();
 
             // Initialize shaders.
-            progAtoms = loadProgram(gl, fs.readFileSync(__dirname + "/shaders/atoms.glsl", 'utf8'));
-            progBonds = loadProgram(gl, fs.readFileSync(__dirname + "/shaders/bonds.glsl", 'utf8'));
-            progDisplayQuad = loadProgram(gl, fs.readFileSync(__dirname + "/shaders/textured-quad.glsl", 'utf8'));
-            progAccumulator = loadProgram(gl, fs.readFileSync(__dirname + "/shaders/accumulator.glsl", 'utf8'));
-            progAO = loadProgram(gl, fs.readFileSync(__dirname + "/shaders/ao.glsl", 'utf8'));
-            progFXAA = loadProgram(gl, fs.readFileSync(__dirname + "/shaders/fxaa.glsl", 'utf8'));
-            progDOF = loadProgram(gl, fs.readFileSync(__dirname + "/shaders/dof.glsl", 'utf8'));
+            progAtoms = loadProgram(gl, "#version 100\nprecision highp float;\n\nattribute vec3 aImposter;\nattribute vec3 aPosition;\nattribute float aRadius;\nattribute vec3 aColor;\n\nuniform mat4 uView;\nuniform mat4 uProjection;\nuniform mat4 uModel;\nuniform float uAtomScale;\nuniform float uRelativeAtomScale;\nuniform float uAtomShade;\n\nvarying vec3 vColor;\nvarying vec3 vPosition;\nvarying float vRadius;\n\nvoid main() {\n    vRadius = uAtomScale * (1.0 + (aRadius - 1.0) * uRelativeAtomScale);\n    gl_Position = uProjection * uView * uModel * vec4(vRadius * aImposter + aPosition, 1.0);\n    vColor = mix(aColor, vec3(1,1,1), uAtomShade);\n    vPosition = vec3(uModel * vec4(aPosition, 1));\n}\n\n\n// __split__\n\n\n#version 100\n#extension GL_EXT_frag_depth: enable\nprecision highp float;\n\nuniform vec2 uBottomLeft;\nuniform vec2 uTopRight;\nuniform float uRes;\nuniform float uDepth;\nuniform int uMode;\n\nvarying vec3 vPosition;\nvarying float vRadius;\nvarying vec3 vColor;\n\nvec2 res = vec2(uRes, uRes);\n\nfloat raySphereIntersect(vec3 r0, vec3 rd) {\n    float a = dot(rd, rd);\n    vec3 s0_r0 = r0 - vPosition;\n    float b = 2.0 * dot(rd, s0_r0);\n    float c = dot(s0_r0, s0_r0) - (vRadius * vRadius);\n    float disc = b*b - 4.0*a*c;\n    if (disc <= 0.0) {\n        return -1.0;\n    }\n    return (-b - sqrt(disc))/(2.0*a);\n}\n\nvoid main() {\n    vec3 r0 = vec3(uBottomLeft + (gl_FragCoord.xy/res) * (uTopRight - uBottomLeft), 0.0);\n    vec3 rd = vec3(0, 0, -1);\n    float t = raySphereIntersect(r0, rd);\n    if (t < 0.0) {\n        discard;\n    }\n    vec3 coord = r0 + rd * t;\n    vec3 normal = normalize(coord - vPosition);\n    if (uMode == 0) {\n        gl_FragColor = vec4(vColor, 1);\n    } else if (uMode == 1) {\n        gl_FragColor = vec4(normal * 0.5 + 0.5, 1.0);\n    }\n    gl_FragDepthEXT = -coord.z/uDepth;\n}\n");
+            progBonds = loadProgram(gl, "#version 100\nprecision highp float;\n\nattribute vec3 aImposter;\nattribute vec3 aPosA;\nattribute vec3 aPosB;\nattribute float aRadA;\nattribute float aRadB;\nattribute vec3 aColA;\nattribute vec3 aColB;\n\nuniform mat4 uView;\nuniform mat4 uProjection;\nuniform mat4 uModel;\nuniform mat4 uRotation;\nuniform float uBondRadius;\nuniform float uAtomScale;\nuniform float uRelativeAtomScale;\n\nvarying vec3 vNormal;\nvarying vec3 vPosA, vPosB;\nvarying float vRadA, vRadB;\nvarying vec3 vColA, vColB;\nvarying float vRadius;\n\nmat3 alignVector(vec3 a, vec3 b) {\n    vec3 v = cross(a, b);\n    float s = length(v);\n    float c = dot(a, b);\n    mat3 I = mat3(\n        1, 0, 0,\n        0, 1, 0,\n        0, 0, 1\n    );\n    mat3 vx = mat3(\n        0, v.z, -v.y,\n        -v.z, 0, v.x,\n        v.y, -v.x, 0\n    );\n    return I + vx + vx * vx * ((1.0 - c) / (s * s));\n}\n\nvoid main() {\n    vRadius = uBondRadius;\n    vec3 pos = vec3(aImposter);\n    // Scale the box in x and z to be bond-radius.\n    pos = pos * vec3(vRadius, 1, vRadius);\n    // Shift the origin-centered cube so that the bottom is at the origin.\n    pos = pos + vec3(0, 1, 0);\n    // Stretch the box in y so that it is the length of the bond.\n    pos = pos * vec3(1, length(aPosA - aPosB) * 0.5, 1);\n    // Find the rotation that aligns vec3(0, 1, 0) with vec3(uPosB - uPosA) and apply it.\n    vec3 a = normalize(vec3(-0.000001, 1.000001, 0.000001));\n    vec3 b = normalize(aPosB - aPosA);\n    mat3 R = alignVector(a, b);\n    pos = R * pos;\n    // Shift the cube so that the bottom is centered at the middle of atom A.\n    pos = pos + aPosA;\n\n    vec4 position = uModel * vec4(pos, 1);\n    gl_Position = uProjection * uView * position;\n    vPosA = aPosA;\n    vPosB = aPosB;\n    vRadA = uAtomScale * (1.0 + (aRadA - 1.0) * uRelativeAtomScale);\n    vRadB = uAtomScale * (1.0 + (aRadB - 1.0) * uRelativeAtomScale);\n    vColA = aColA;\n    vColB = aColB;\n}\n\n\n// __split__\n\n\n#version 100\n#extension GL_EXT_frag_depth: enable\nprecision highp float;\n\nuniform mat4 uRotation;\nuniform vec2 uBottomLeft;\nuniform vec2 uTopRight;\nuniform float uDepth;\nuniform float uRes;\nuniform float uBondShade;\nuniform int uMode;\n\nvarying vec3 vPosA, vPosB;\nvarying float vRadA, vRadB;\nvarying vec3 vColA, vColB;\nvarying float vRadius;\n\nmat3 alignVector(vec3 a, vec3 b) {\n    vec3 v = cross(a, b);\n    float s = length(v);\n    float c = dot(a, b);\n    mat3 I = mat3(\n        1, 0, 0,\n        0, 1, 0,\n        0, 0, 1\n    );\n    mat3 vx = mat3(\n        0, v.z, -v.y,\n        -v.z, 0, v.x,\n        v.y, -v.x, 0\n    );\n    return I + vx + vx * vx * ((1.0 - c) / (s * s));\n}\n\nvoid main() {\n\n    vec2 res = vec2(uRes, uRes);\n    vec3 r0 = vec3(uBottomLeft + (gl_FragCoord.xy/res) * (uTopRight - uBottomLeft), uDepth/2.0);\n    vec3 rd = vec3(0, 0, -1);\n\n    vec3 i = normalize(vPosB - vPosA);\n         i = vec3(uRotation * vec4(i, 0));\n    vec3 j = normalize(vec3(-0.000001, 1.000001, 0.000001));\n    mat3 R = alignVector(i, j);\n\n    vec3 r0p = r0 - vec3(uRotation * vec4(vPosA, 0));\n    r0p = R * r0p;\n    vec3 rdp = R * rd;\n\n    float a = dot(rdp.xz, rdp.xz);\n    float b = 2.0 * dot(rdp.xz, r0p.xz);\n    float c = dot(r0p.xz, r0p.xz) - vRadius*vRadius;\n    float disc = b*b - 4.0*a*c;\n    if (disc <= 0.0) {\n        discard;\n    }\n    float t = (-b - sqrt(disc))/(2.0*a);\n    if (t < 0.0) {\n        discard;\n    }\n\n    vec3 coord = r0p + rdp * t;\n    if (coord.y < 0.0 || coord.y > length(vPosA - vPosB)) {\n        discard;\n    }\n\n    vec3 color;\n    if (coord.y < vRadA + 0.5 * (length(vPosA - vPosB) - (vRadA + vRadB))) {\n        color = vColA;\n    } else {\n        color = vColB;\n    }\n\n    color = mix(color, vec3(1,1,1), uBondShade);\n\n    R = alignVector(j, i);\n    vec3 normal = normalize(R * vec3(coord.x, 0, coord.z));\n\n    coord = r0 + rd * t;\n    if (uMode == 0) {\n        gl_FragColor = vec4(color, 1);\n    } else if (uMode == 1) {\n        gl_FragColor = vec4(normal * 0.5 + 0.5, 1.0);\n    }\n    gl_FragDepthEXT = -(coord.z - uDepth/2.0)/uDepth;\n}\n");
+            progDisplayQuad = loadProgram(gl, "#version 100\nprecision highp float;\n\nattribute vec3 aPosition;\n\nvoid main() {\n    gl_Position = vec4(aPosition, 1);\n}\n\n\n// __split__\n\n\n#version 100\nprecision highp float;\n\nuniform sampler2D uTexture;\nuniform float uRes;\n\nvoid main() {\n    gl_FragColor = texture2D(uTexture, gl_FragCoord.xy/uRes);\n}\n");
+            progAccumulator = loadProgram(gl, "#version 100\nprecision highp float;\n\nattribute vec3 aPosition;\n\nvoid main() {\n    gl_Position = vec4(aPosition, 1);\n}\n\n\n// __split__\n\n\n#version 100\nprecision highp float;\n\nuniform sampler2D uSceneDepth;\nuniform sampler2D uSceneNormal;\nuniform sampler2D uRandRotDepth;\nuniform sampler2D uAccumulator;\nuniform mat4 uRot;\nuniform mat4 uInvRot;\nuniform vec2 uSceneBottomLeft;\nuniform vec2 uSceneTopRight;\nuniform vec2 uRotBottomLeft;\nuniform vec2 uRotTopRight;\nuniform float uDepth;\nuniform float uRes;\nuniform int uSampleCount;\n\nvoid main() {\n\n    float dScene = texture2D(uSceneDepth, gl_FragCoord.xy/uRes).r;\n\n    vec3 r = vec3(uSceneBottomLeft + (gl_FragCoord.xy/uRes) * (uSceneTopRight - uSceneBottomLeft), 0.0);\n\n    r.z = -(dScene - 0.5) * uDepth;\n    r = vec3(uRot * vec4(r, 1));\n    float depth = -r.z/uDepth + 0.5;\n\n    vec2 p = (r.xy - uRotBottomLeft)/(uRotTopRight - uRotBottomLeft);\n\n    float dRandRot = texture2D(uRandRotDepth, p).r;\n\n    float ao = step(dRandRot, depth * 0.99);\n\n    vec3 normal = texture2D(uSceneNormal, gl_FragCoord.xy/uRes).rgb * 2.0 - 1.0;\n    vec3 dir = vec3(uInvRot * vec4(0, 0, 1, 0));\n    float mag = dot(dir, normal);\n    float sampled = step(0.0, mag);\n\n    ao *= sampled;\n\n    vec4 acc = texture2D(uAccumulator, gl_FragCoord.xy/uRes);\n\n    if (uSampleCount < 256) {\n        acc.r += ao/255.0;\n    } else if (uSampleCount < 512) {\n        acc.g += ao/255.0;\n    } else if (uSampleCount < 768) {\n        acc.b += ao/255.0;\n    } else {\n        acc.a += ao/255.0;\n    }\n        \n    gl_FragColor = acc;\n\n}\n");
+            progAO = loadProgram(gl, "#version 100\nprecision highp float;\n\nattribute vec3 aPosition;\n\nvoid main() {\n    gl_Position = vec4(aPosition, 1);\n}\n\n\n// __split__\n\n\n#version 100\nprecision highp float;\n\nuniform sampler2D uSceneColor;\nuniform sampler2D uSceneDepth;\nuniform sampler2D uAccumulatorOut;\nuniform float uRes;\nuniform float uAO;\nuniform float uBrightness;\nuniform float uOutlineStrength;\n\nvoid main() {\n    vec2 p = gl_FragCoord.xy/uRes;\n    vec4 sceneColor = texture2D(uSceneColor, p);\n    if (uOutlineStrength > 0.0) {\n        float depth = texture2D(uSceneDepth, p).r;\n        float r = 1.0/511.0;\n        float d0 = abs(texture2D(uSceneDepth, p + vec2(-r,  0)).r - depth);\n        float d1 = abs(texture2D(uSceneDepth, p + vec2( r,  0)).r - depth);\n        float d2 = abs(texture2D(uSceneDepth, p + vec2( 0, -r)).r - depth);\n        float d3 = abs(texture2D(uSceneDepth, p + vec2( 0,  r)).r - depth);\n        float d = max(d0, d1);\n        d = max(d, d2);\n        d = max(d, d3);\n        sceneColor.rgb *= pow(1.0 - d, uOutlineStrength * 32.0);\n        sceneColor.a = max(step(0.003, d), sceneColor.a);\n    }\n    vec4 dAccum = texture2D(uAccumulatorOut, p);\n    float shade = max(0.0, 1.0 - (dAccum.r + dAccum.g + dAccum.b + dAccum.a) * 0.25 * uAO);\n    shade = pow(shade, 2.0);\n    gl_FragColor = vec4(uBrightness * sceneColor.rgb * shade, sceneColor.a);\n}\n");
+            progFXAA = loadProgram(gl, "#version 100\nprecision highp float;\n\nattribute vec3 aPosition;\n\nvoid main() {\n    gl_Position = vec4(aPosition, 1);\n}\n\n\n// __split__\n\n\n#version 100\nprecision highp float;\n\nuniform sampler2D uTexture;\nuniform float uRes;\n\nvoid main() {\n    float FXAA_SPAN_MAX = 8.0;\n    float FXAA_REDUCE_MUL = 1.0/8.0;\n    float FXAA_REDUCE_MIN = 1.0/128.0;\n\n    vec2 texCoords = gl_FragCoord.xy/uRes;\n\n    vec4 rgbNW = texture2D(uTexture, texCoords + (vec2(-1.0, -1.0) / uRes));\n    vec4 rgbNE = texture2D(uTexture, texCoords + (vec2(1.0, -1.0) / uRes));\n    vec4 rgbSW = texture2D(uTexture, texCoords + (vec2(-1.0, 1.0) / uRes));\n    vec4 rgbSE = texture2D(uTexture, texCoords + (vec2(1.0, 1.0) / uRes));\n    vec4 rgbM  = texture2D(uTexture, texCoords);\n\n    vec4 luma = vec4(0.299, 0.587, 0.114, 1.0);\n    float lumaNW = dot(rgbNW, luma);\n    float lumaNE = dot(rgbNE, luma);\n    float lumaSW = dot(rgbSW, luma);\n    float lumaSE = dot(rgbSE, luma);\n    float lumaM  = dot(rgbM,  luma);\n\n    float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));\n    float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));\n\n    vec2 dir;\n    dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));\n    dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));\n\n    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * (0.25 * FXAA_REDUCE_MUL), FXAA_REDUCE_MIN);\n\n    float rcpDirMin = 1.0/(min(abs(dir.x), abs(dir.y)) + dirReduce);\n\n    dir = min(vec2(FXAA_SPAN_MAX, FXAA_SPAN_MAX), max(vec2(-FXAA_SPAN_MAX, -FXAA_SPAN_MAX), dir * rcpDirMin)) / uRes;\n\n    vec4 rgbA = (1.0/2.0) * \n        (texture2D(uTexture, texCoords.xy + dir * (1.0/3.0 - 0.5)) + \n         texture2D(uTexture, texCoords.xy + dir * (2.0/3.0 - 0.5)));\n    vec4 rgbB = rgbA * (1.0/2.0) + (1.0/4.0) * \n        (texture2D(uTexture, texCoords.xy + dir * (0.0/3.0 - 0.5)) +\n         texture2D(uTexture, texCoords.xy + dir * (3.0/3.0 - 0.5)));\n    float lumaB = dot(rgbB, luma);\n\n    if((lumaB < lumaMin) || (lumaB > lumaMax)){\n        gl_FragColor = rgbA;\n    } else {\n        gl_FragColor = rgbB;\n    }\n\n}");
+            progDOF = loadProgram(gl, "#version 100\nprecision highp float;\n\nattribute vec3 aPosition;\n\nvoid main() {\n    gl_Position = vec4(aPosition, 1);\n}\n\n\n// __split__\n\n\n#version 100\nprecision highp float;\n\nuniform sampler2D uColor;\nuniform sampler2D uDepth;\nuniform float uRes;\nuniform float uDOFPosition;\nuniform float uDOFStrength;\nuniform int leftRight;\n\nvoid main() {\n\n    vec2 samples[64];\n    samples[0] = vec2(0.857612, 0.019885);\n    samples[1] = vec2(0.563809, -0.028071);\n    samples[2] = vec2(0.825599, -0.346856);\n    samples[3] = vec2(0.126584, -0.380959);\n    samples[4] = vec2(0.782948, 0.594322);\n    samples[5] = vec2(0.292148, -0.543265);\n    samples[6] = vec2(0.130700, 0.330220);\n    samples[7] = vec2(0.236088, 0.159604);\n    samples[8] = vec2(-0.305259, 0.810505);\n    samples[9] = vec2(0.269616, 0.923026);\n    samples[10] = vec2(0.484486, 0.371845);\n    samples[11] = vec2(-0.638057, 0.080447);\n    samples[12] = vec2(0.199629, 0.667280);\n    samples[13] = vec2(-0.861043, -0.370583);\n    samples[14] = vec2(-0.040652, -0.996174);\n    samples[15] = vec2(0.330458, -0.282111);\n    samples[16] = vec2(0.647795, -0.214354);\n    samples[17] = vec2(0.030422, -0.189908);\n    samples[18] = vec2(0.177430, -0.721124);\n    samples[19] = vec2(-0.461163, -0.327434);\n    samples[20] = vec2(-0.410012, -0.734504);\n    samples[21] = vec2(-0.616334, -0.626069);\n    samples[22] = vec2(0.590759, -0.726479);\n    samples[23] = vec2(-0.590794, 0.805365);\n    samples[24] = vec2(-0.924561, -0.163739);\n    samples[25] = vec2(-0.323028, 0.526960);\n    samples[26] = vec2(0.642128, 0.752577);\n    samples[27] = vec2(0.173625, -0.952386);\n    samples[28] = vec2(0.759014, 0.330311);\n    samples[29] = vec2(-0.360526, -0.032013);\n    samples[30] = vec2(-0.035320, 0.968156);\n    samples[31] = vec2(0.585478, -0.431068);\n    samples[32] = vec2(-0.244766, -0.906947);\n    samples[33] = vec2(-0.853096, 0.184615);\n    samples[34] = vec2(-0.089061, 0.104648);\n    samples[35] = vec2(-0.437613, 0.285308);\n    samples[36] = vec2(-0.654098, 0.379841);\n    samples[37] = vec2(-0.128663, 0.456572);\n    samples[38] = vec2(0.015980, -0.568170);\n    samples[39] = vec2(-0.043966, -0.771940);\n    samples[40] = vec2(0.346512, -0.071238);\n    samples[41] = vec2(-0.207921, -0.209121);\n    samples[42] = vec2(-0.624075, -0.189224);\n    samples[43] = vec2(-0.120618, 0.689339);\n    samples[44] = vec2(-0.664679, -0.410200);\n    samples[45] = vec2(0.371945, -0.880573);\n    samples[46] = vec2(-0.743251, 0.629998);\n    samples[47] = vec2(-0.191926, -0.413946);\n    samples[48] = vec2(0.449574, 0.833373);\n    samples[49] = vec2(0.299587, 0.449113);\n    samples[50] = vec2(-0.900432, 0.399319);\n    samples[51] = vec2(0.762613, -0.544796);\n    samples[52] = vec2(0.606462, 0.174233);\n    samples[53] = vec2(0.962185, -0.167019);\n    samples[54] = vec2(0.960990, 0.249552);\n    samples[55] = vec2(0.570397, 0.559146);\n    samples[56] = vec2(-0.537514, 0.555019);\n    samples[57] = vec2(0.108491, -0.003232);\n    samples[58] = vec2(-0.237693, -0.615428);\n    samples[59] = vec2(-0.217313, 0.261084);\n    samples[60] = vec2(-0.998966, 0.025692);\n    samples[61] = vec2(-0.418554, -0.527508);\n    samples[62] = vec2(-0.822629, -0.567797);\n    samples[63] = vec2(0.061945, 0.522105);\n\n    float invRes = 1.0/uRes;\n    vec2 coord = gl_FragCoord.xy * invRes;\n\n    float strength = uDOFStrength * uRes/768.0;\n\n    float depth = texture2D(uDepth, coord).r;\n    float range = uDOFPosition - depth;\n    float scale = abs(range);\n\n    vec4 sample = texture2D(uColor, coord);\n    float count = 1.0;\n    for(int i = 0; i < 64; i++) {\n        vec2 p = samples[i];\n        p = coord + scale * 64.0 * strength * p * invRes;\n        float d = texture2D(uDepth, p).r;\n        float r = uDOFPosition - d;\n        float s = abs(r);\n        sample += texture2D(uColor, p) * s;\n        count += s;\n    }\n\n    gl_FragColor = sample/count;\n}");
 
             var position = [
                 -1, -1, 0,
@@ -16533,8 +16565,7 @@ function loadProgram(gl, src) {
     return new webgl.Program(gl, src[0], src[1]);
 }
 
-}).call(this,"/node_modules/speck")
-},{"./cube":7,"./elements":8,"./gl-matrix":9,"./system":14,"./view":15,"./webgl.js":16,"fs":1}],13:[function(require,module,exports){
+},{"./cube":10,"./elements":11,"./gl-matrix":12,"./system":17,"./view":18,"./webgl.js":19}],16:[function(require,module,exports){
 module.exports = [
     {name: "Testosterone", file: "testosterone.xyz"},
     {name: "Caffeine", file: "caffeine.xyz"},
@@ -16547,7 +16578,7 @@ module.exports = [
     {name: "Methane", file: "methane.xyz"},
 ];
 
-},{}],14:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 "use strict";
 
 var glm = require("./gl-matrix")
@@ -16678,7 +16709,7 @@ var getRadius = module.exports.getRadius = function(s) {
     return Math.sqrt(atom.x*atom.x + atom.y*atom.y + atom.z*atom.z) + rd;
 }
 
-},{"./const":6,"./elements":8,"./gl-matrix":9}],15:[function(require,module,exports){
+},{"./const":9,"./elements":11,"./gl-matrix":12}],18:[function(require,module,exports){
 "use strict";
 
 
@@ -16824,7 +16855,7 @@ var getBondRadius = module.exports.getBondRadius = function(v) {
 
 
 
-},{"./const":6,"./elements":8,"./gl-matrix":9}],16:[function(require,module,exports){
+},{"./const":9,"./elements":11,"./gl-matrix":12}],19:[function(require,module,exports){
 
 //|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 function buildAttribs(gl, layout) {
@@ -17140,7 +17171,7 @@ function Program(gl, vertexSource, fragmentSource) {
 //|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 module.exports.Program = Program;
 
-},{}],17:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 module.exports = function(data) {
     var lines = data.split('\n');
     var natoms = parseInt(lines[0]);
@@ -17162,4 +17193,4 @@ module.exports = function(data) {
     return trajectory;
 }
 
-},{}]},{},[2]);
+},{}]},{},[1]);
