@@ -1,14 +1,38 @@
 <!DOCTYPE html>
-<html lang="en-US">
-  <head>
-    <link rel="stylesheet" type="text/css" href="./css/style.css">
-    <script type="text/javascript" src="./js/index.js"></script>
-  </head>
-  <body>
-    <h1>
-    EMBL-EBI Web Developer Test
-    </h1>
-  </body>
+<html lang="en-US" >
+	<head>
+		<meta charset="UTF-8">
+		<title>EBI Test</title>
+		<link rel="icon" href="http://juanfmx2.github.io/favicon.ico">
+		<link rel="stylesheet" type="text/css" href="./css/style.css">
+		<script src="https://www.promisejs.org/polyfills/promise-7.0.4.min.js"></script>
+		<script type="text/javascript" src="./js/bundle/index-bundle.js"></script>
+	</head>
+	<body>
+		<h1>
+			EMBL-EBI Web Developer Test
+		</h1>
+		<div id="container">
+			<div id="left_panel">
+				<div id="error" style="display: none; border:solid;border-color: red;">
+					<div id="error-text"></div>
+				</div>
+				<div id="file_drop_div">
+					<div class="vert_align">Drag and drop a SMILES file, or click here to <b>browse</b>.</div>
+					<input id="smile_file" type="file" name="file" />
+				</div>
+				<br>
+				<div id="results">
+				
+				</div>
+			</div>
+			<div id="right_panel">
+				<div id="render-container">
+					<canvas id="renderer-canvas"></canvas>
+				</div>
+			</div>
+		</div>
+	</body>
 </html>
 
 

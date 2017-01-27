@@ -1,0 +1,73 @@
+body{
+	font-family      : "Gotham Rounded A","Gotham Rounded B","Helvetica Neue",Helvetica,Arial,sans-serif;
+	font-size        : 1em;
+}
+
+h1{
+	background-color  : black;
+	color             : white;
+	padding           : 0.3em;
+}
+
+#container {
+	position       : relative;
+	width          : 100%;
+	display        : block;
+}
+
+#left_panel {
+	position      : absolute;
+	left          : 1em;
+	top           : 1em;
+}
+
+#right_panel {
+	position      : absolute;
+	left          : 55%;
+	top           : 1em;
+}
+
+.vert_align {
+	position: relative;
+	top: 50%;
+	transform: translateY(-50%);
+}
+
+div#file_drop_div {
+	position       : relative;
+	left           : 0;
+	top            : 0;
+	width          : 12em;
+	height         : 8em;
+	text-align     : center;
+	vertical-align : middle;
+	overflow       : hidden;
+	border         : dashed;
+	border-color   : red;
+}
+
+input#smile_file {
+	position      : absolute !important;
+	left          : 0 !important;
+	top           : 0 !important;
+	width         : 12em !important;
+	height        : 8em !important;
+	opacity       : 0 !important;
+	overflow      : hidden !important;
+}
+
+div#render-container{
+	border           : solid;
+	border-width     : 0.1em;
+	border-color     : gray;
+	background-color : green;
+	display          : none;
+}
+
+#results {
+	border           : solid;
+	border-width     : 0.1em;
+	border-color     : gray;
+	max-width        : 100%; 
+	display          : none;
+}
